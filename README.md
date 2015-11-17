@@ -4,7 +4,7 @@ This is a plugin for [Docker Machine](https://docs.docker.com/machine/) allowing
 to create Docker hosts locally on [VMWare Workstation](https://www.vmware.com/products/workstation)
 
 This as placeholder and collaboration point to add a vmware workstation driver.
-This is reusing part of the code from the fusion driver bundled with docker machine(as both have the same executable) and adding some code from [packer](https://packer.io) vmware driver to detect the location of the files on windows.
+This is reusing part of the code from the fusion driver bundled with docker machine(as both have the same executable) and adding some code from [Packer](https://packer.io) vmware driver to detect the location of the files on windows.
 
 As the title says this is still WIP and im working to add functionality listed on the TODO list, i accept suggestions.
 
@@ -98,6 +98,7 @@ be created. If you want, copy it to the `${GOPATH}/bin/`.
 
 * Gonzalo Peci ([@pecigonzalo](https://github.com/pecigonzalo))
 
-## Credit
+## Credits
 
 * Partial copy of the README from https://github.com/Parallels/docker-machine-parallels
+* [Packer](https://packer.io) VMWare Workstation driver functions
