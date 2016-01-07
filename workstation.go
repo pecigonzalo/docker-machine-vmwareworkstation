@@ -454,7 +454,10 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	var currentleadeendtime time.Time
 
 	// DHCP lease table for NAT vmnet interface
-	var dhcpfile = "C:/ProgramData/VMware/vmnetdhcp.leases"
+	var dhcpfile = workstationDhcpLeasesPath()
+	if dhcpfile == "" {
+		return "", fmt.Errorf("no DHCP leases path found.")
+	}
 
 	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
 		return "", err
