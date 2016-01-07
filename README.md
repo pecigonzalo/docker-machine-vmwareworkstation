@@ -15,7 +15,7 @@ As the title says this is still WIP and im working to add functionality listed o
 * ~~add windows support~~
 * ~~add cmd/machine-driver-vmwareworkstation.go~~
 * Add Linux/OSX support
-* Add dhcplease file discovery on windows
+* ~~Add dhcplease file discovery on windows~~
 * Add tests cases
 * ~~Create makefile~~
 * Add docs/drivers/vm-workstation.md
