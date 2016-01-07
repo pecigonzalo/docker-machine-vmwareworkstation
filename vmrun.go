@@ -35,7 +35,7 @@ func workstationVMwareRoot() (s string, err error) {
 	subkey := "Path"
 	s, err = readRegString(syscall.HKEY_LOCAL_MACHINE, key, subkey)
 	if err != nil {
-		log.Printf(`Unable to read registry key %s\%s`, key, subkey)
+		log.Errorf(`Unable to read registry key %s\%s`, key, subkey)
 		return
 	}
 
@@ -71,7 +71,7 @@ func workstationVMwareRoot() (s string, err error) {
 func workstationProgramFilePaths() []string {
 	path, err := workstationVMwareRoot()
 	if err != nil {
-		log.Printf("Error finding VMware root: %s", err)
+		log.Errorf("Error finding VMware root: %s", err)
 	}
 
 	paths := make([]string, 0, 5)
@@ -161,7 +161,7 @@ func findFile(file string, paths []string) string {
 		}
 	}
 
-	log.Printf("File not found: '%s'", file)
+	log.Errorf("File not found: '%s'", file)
 	return ""
 }
 

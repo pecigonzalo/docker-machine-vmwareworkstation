@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -144,9 +145,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.ConfigDriveURL = flags.String("vmwareworkstation-configdrive-url")
 	d.ISO = d.ResolveStorePath(isoFilename)
 	d.ConfigDriveISO = d.ResolveStorePath(isoConfigDrive)
-	d.SwarmMaster = flags.Bool("swarm-master")
-	d.SwarmHost = flags.String("swarm-host")
-	d.SwarmDiscovery = flags.String("swarm-discovery")
+	d.SetSwarmConfigFromFlags(flags)
 	d.SSHUser = flags.String("vmwareworkstation-ssh-user")
 	d.SSHPassword = flags.String("vmwareworkstation-ssh-password")
 	d.SSHPort = 22
@@ -193,10 +192,26 @@ func (d *Driver) GetIP() (string, error) {
 
 func (d *Driver) GetState() (state.State, error) {
 	// VMRUN only tells use if the vm is running or not
-	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, d.vmxPath()) {
+	vmxp, err := filepath.EvalSymlinks(d.vmxPath())
+	if err != nil {
+		return state.Error, err
+	}
+	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, vmxp) {
 		return state.Running, nil
 	}
 	return state.Stopped, nil
+}
+
+// PreCreateCheck checks that the machine creation process can be started safely.
+func (d *Driver) PreCreateCheck() error {
+	// Downloading boot2docker to cache should be done here to make sure
+	// that a download failure will not leave a machine half created.
+	b2dutils := mcnutils.NewB2dUtils(d.StorePath)
+	if err := b2dutils.UpdateISOCache(d.Boot2DockerURL); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (d *Driver) Create() error {
@@ -207,7 +222,6 @@ func (d *Driver) Create() error {
 
 	// download cloud-init config drive
 	if d.ConfigDriveURL != "" {
-		log.Infof("Downloading %s from %s", isoConfigDrive, d.ConfigDriveURL)
 		if err := b2dutils.DownloadISO(d.ResolveStorePath("."), isoConfigDrive, d.ConfigDriveURL); err != nil {
 			return err
 		}
@@ -358,7 +372,6 @@ func (d *Driver) Create() error {
 }
 
 func (d *Driver) Start() error {
-	log.Infof("Starting %s...", d.MachineName)
 	vmrun("start", d.vmxPath(), "nogui")
 
 	// Do not execute the rest of boot2docker specific configuration, exit here
@@ -390,13 +403,11 @@ func (d *Driver) Start() error {
 }
 
 func (d *Driver) Stop() error {
-	log.Infof("Gracefully shutting down %s...", d.MachineName)
-	vmrun("stop", d.vmxPath(), "nogui")
-	return nil
+	_, _, err := vmrun("stop", d.vmxPath(), "nogui")
+	return err
 }
 
 func (d *Driver) Remove() error {
-
 	s, _ := d.GetState()
 	if s == state.Running {
 		if err := d.Kill(); err != nil {
@@ -409,15 +420,13 @@ func (d *Driver) Remove() error {
 }
 
 func (d *Driver) Restart() error {
-	log.Infof("Gracefully restarting %s...", d.MachineName)
-	vmrun("reset", d.vmxPath(), "nogui")
-	return nil
+	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
+	return err
 }
 
 func (d *Driver) Kill() error {
-	log.Infof("Forcibly halting %s...", d.MachineName)
-	vmrun("stop", d.vmxPath(), "hard nogui")
-	return nil
+	_, _, err := vmrun("stop", d.vmxPath(), "hard nogui")
+	return err
 }
 
 func (d *Driver) Upgrade() error {
