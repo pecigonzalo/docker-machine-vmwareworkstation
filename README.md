@@ -1,4 +1,5 @@
 # Docker Machine VMWare Workstation Driver
+[![Windows Build Status](https://ci.appveyor.com/api/projects/status/k8j7ej2a7t58p2r0/branch/master?svg=true)](https://ci.appveyor.com/project/pecigonzalo/docker-machine-vmwareworkstation)
 
 This is a plugin for [Docker Machine](https://docs.docker.com/machine/) allowing
 to create Docker hosts locally on [VMWare Workstation](https://www.vmware.com/products/workstation)

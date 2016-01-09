@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0
+
+IMPROVEMENTS:
+ * Add appveyor auto builds
+ * Initial basic tests
+
+Notes: Updated license files/notices
+
 ## 0.9.0
 
 IMPROVEMENTS:
