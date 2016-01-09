@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.0.10
+
 ## 1.0.0
 
 IMPROVEMENTS:

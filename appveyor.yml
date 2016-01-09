@@ -1,6 +1,6 @@
 # appveyor.yml reference : http://www.appveyor.com/docs/appveyor-yml
 
-version: "1.0.{build}"
+version: "1.0.10.{build}"
 
 # Source Config
 pull_requests:
