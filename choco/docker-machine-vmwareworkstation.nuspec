@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>docker-machine-vmwareworkstation</id>
+    <title>docker-machine-vmwareworkstation</title>
+    <version>1.0.0</version>
+    <authors>Gonzalo Peci</authors>
+    <owners>StefanScherer</owners>
+    <summary>VMWare Workstation driver for Docker Machine</summary>
+    <description>Machine lets you create Docker hosts on your computer, on cloud providers, and inside your own data center. It creates servers, installs Docker on them, then configures the Docker client to talk to them.
+    </description>
+    <dependencies>
+      <dependency id="docker-machine" version="0.5.5" />
+    </dependencies>
+    <projectUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation</projectUrl>
+    <packageSourceUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation</packageSourceUrl>
+    <projectSourceUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation</projectSourceUrl>
+    <docsUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation#usage</docsUrl>
+    <bugTrackerUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation/issues</bugTrackerUrl>
+    <iconUrl>https://raw.githubusercontent.com/docker/machine/master/docs/img/logo.png</iconUrl>
+    <licenseUrl>https://github.com/pecigonzalo/docker-machine-vmwareworkstation/blob/master/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <tags>docker-machine docker vmware workstation</tags>
+    <releaseNotes>https://github.com/pecigonzalo/docker-machine-vmwareworkstation/blob/master/CHANGELOG.md</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
