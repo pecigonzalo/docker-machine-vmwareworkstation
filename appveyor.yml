@@ -42,17 +42,16 @@ build_script:
   - go test -v ./...
   - go vet ./...
   - git rev-parse HEAD
-  - go build -i -o ./bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
+  - go build -i -o ./bin/docker-machine-driver-vmwareworkstation_windows-%GOARCH%.exe ./cmd/
 
 test: off
 
 # Deploy
 artifacts:
-  - path: bin/docker-machine-driver-vmwareworkstation.exe
+  - path: /bin/docker-machine-driver-vmwareworkstation_*-*.exe
 
 deploy:
   provider: GitHub
-
   description: ' '
   auth_token:
     secure: QqxdbpN5rJhuQw42Iq4W6tdP1Lu4aw6y88QnHYC3tSQ9rzNuEI/q+qH4HGJ5WDpj
