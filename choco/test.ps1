@@ -15,7 +15,6 @@ $ErrorActionPreference = "Stop"
 if ($env:APPVEYOR_BUILD_VERSION) {
   # run in CI
   $version = $env:APPVEYOR_BUILD_VERSION -replace('\.[^.\\/]+$')
-  $version = "$version.0"
 } else {
   # run manually
   [xml]$spec = Get-Content docker-machine-vmwareworkstation.nuspec
@@ -28,7 +27,7 @@ if ($env:APPVEYOR_BUILD_VERSION) {
 "TEST: Version $version in docker-machine-vmwareworkstation.nuspec file should match"
 [xml]$spec = Get-Content docker-machine-vmwareworkstation.nuspec
 if ($spec.package.metadata.version.CompareTo($version)) {
-  Write-Error "FAIL: rong version in nuspec file!"
+  Write-Error "FAIL: Wrong version in nuspec file!"
 }
 
 "TEST: Package should contain only install script"
