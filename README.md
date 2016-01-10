@@ -1,10 +1,10 @@
-# Docker Machine VMWare Workstation Driver
+# Docker Machine VMware Workstation Driver
 
 [![Join the chat at https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation](https://badges.gitter.im/pecigonzalo/docker-machine-vmwareworkstation.svg)](https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/k8j7ej2a7t58p2r0/branch/master?svg=true)](https://ci.appveyor.com/project/pecigonzalo/docker-machine-vmwareworkstation)
 
 This is a plugin for [Docker Machine](https://docs.docker.com/machine/) allowing
-to create Docker hosts locally on [VMWare Workstation](https://www.vmware.com/products/workstation)
+to create Docker hosts locally on [VMware Workstation](https://www.vmware.com/products/workstation)
 
 This as placeholder and collaboration point to add a vmware workstation driver.
 This is reusing part of the code from the fusion driver bundled with docker machine(as both have the same executable) and adding some code from [Packer](https://packer.io) vmware driver to detect the location of the files on windows.
@@ -26,7 +26,7 @@ As the title says this is still WIP and im working to add functionality listed o
 ## Requirements
 * Windows 7+ (for now)
 * [Docker Machine](https://docs.docker.com/machine/) 0.5.0+
-* [VMWare Workstation](https://www.vmware.com/products/workstation)
+* [VMware Workstation](https://www.vmware.com/products/workstation)
 
 ## Installation
 
@@ -36,7 +36,7 @@ the ["Releases"](https://github.com/pecigonzalo/docker-machine-vmwareworkstation
 ## Usage
 Official documentation for Docker Machine [is available here](https://docs.docker.com/machine/).
 
-To create a VMWare Workstation virtual machine for Docker purposes just run this
+To create a VMware Workstation virtual machine for Docker purposes just run this
 command:
 
 ```
