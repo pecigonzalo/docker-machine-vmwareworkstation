@@ -3,9 +3,9 @@
   <metadata>
     <id>docker-machine-vmwareworkstation</id>
     <title>docker-machine-vmwareworkstation</title>
-    <version>1.0.0</version>
-    <authors>Gonzalo Peci</authors>
-    <owners>StefanScherer</owners>
+    <version>1.0.10</version>
+    <authors>Gonzalo Peci, StefanScherer</authors>
+    <owners>Gonzalo Peci</owners>
     <summary>VMWare Workstation driver for Docker Machine</summary>
     <description>Machine lets you create Docker hosts on your computer, on cloud providers, and inside your own data center. It creates servers, installs Docker on them, then configures the Docker client to talk to them.
     </description>

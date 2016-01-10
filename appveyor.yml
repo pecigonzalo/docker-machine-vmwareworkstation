@@ -8,7 +8,6 @@ pull_requests:
 branches:
   only:
     - master
-    - add-choco-package
 clone_folder: c:\gopath\src\github.com\pecigonzalo\docker-machine-vmwareworkstation
 clone_depth: 5
 
@@ -18,7 +17,7 @@ os: Windows Server 2012 R2
 
 environment:
   CHOCOLATEY_TOKEN:
-    secure: KE3DuBSMhbBxLurkOXLrmAFbF+zptuCJztv1LDq1DfU65A1NSoYTI9JpYE63h/66
+    secure: TBD
   GOPATH: c:\gopath
   matrix:
   - GOARCH: 386
@@ -32,6 +31,7 @@ init:
 # Build
 
 install:
+  - choco install vmwareworkstation # to have vmrun.exe for unit tests
   - set Path=c:\go\bin;%Path%
   - echo %Path%
   - appveyor DownloadFile https://storage.googleapis.com/golang/go%GOVERSION%.windows-%GOARCH%.msi
@@ -49,7 +49,7 @@ build_script:
   - ps: cd choco; cpack; cd ..
 
 test_script:
-  - ps: cd choco; .\test.ps1 -cpu x64; cd ..
+  - ps: cd choco; .\test.ps1 -cpu %GOARCH%; cd ..
 
 # Deploy
 artifacts:

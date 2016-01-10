@@ -3,9 +3,9 @@ param(
 )
 
 if (!$cpu) {
-  $cpu = "x64"
+  $cpu = "amd64"
 }
-if ($cpu -eq "x86") {
+if ($cpu -eq "386") {
   $options = "-forcex86"
 }
 
