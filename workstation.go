@@ -353,14 +353,16 @@ func (d *Driver) Create() error {
 	// Enable Shared Folders
 	vmrun("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
 
-	var shareName, shareDir string // TODO configurable at some point
+	var shareName, shareDir, guestFolder string // TODO configurable at some point
 	switch runtime.GOOS {
 	case "linux":  // TODO Test linux working
 		shareName = "Home"
 		shareDir = "/Home"
+		guestFolder = "/Users"
 	case "windows":
 		shareName = "Users"
-		shareDir = "C:/Users/"
+		shareDir = `C:\Users\`
+		guestFolder = "/Users"
 	}
 
 	if shareDir != "" {
@@ -369,7 +371,7 @@ func (d *Driver) Create() error {
 		} else if !os.IsNotExist(err) {
 			// add shared folder, create mountpoint and mount it.
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(), shareName, shareDir)
-			command := "[ ! -d " + shareDir + " ]&& sudo mkdir " + shareDir + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + shareDir + " || sudo mount -t vmhgfs .host:/" + shareName + " " + shareDir
+			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
@@ -386,14 +388,16 @@ func (d *Driver) Start() error {
 	}
 
 	log.Debugf("Mounting Shared Folders...")
-	var shareName, shareDir string // TODO configurable at some point
+	var shareName, shareDir, guestFolder string // TODO configurable at some point
 	switch runtime.GOOS {
 	case "linux":  // TODO Test linux working
 		shareName = "Home"
 		shareDir = "/Home"
+		guestFolder = "/Users"
 	case "windows":
 		shareName = "Users"
-		shareDir = "C:/Users/"
+		shareDir = `C:\Users\`
+		guestFolder = "/Users"
 	}
 
 	if shareDir != "" {
@@ -401,7 +405,7 @@ func (d *Driver) Start() error {
 			return err
 		} else if !os.IsNotExist(err) {
 			// create mountpoint and mount shared folder
-			command := "[ ! -d " + shareDir + " ]&& sudo mkdir " + shareDir + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + shareDir + " || sudo mount -t vmhgfs .host:/" + shareName + " " + shareDir
+			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
