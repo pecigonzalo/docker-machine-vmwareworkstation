@@ -355,10 +355,12 @@ func (d *Driver) Create() error {
 
 	var shareName, shareDir string // TODO configurable at some point
 	switch runtime.GOOS {
-	case "darwin":
+	case "linux":  // TODO Test linux working
+		shareName = "Home"
+		shareDir = "/Home"
+	case "windows":
 		shareName = "Users"
-		shareDir = "/Users"
-		// TODO "linux" and "windows"
+		shareDir = "C:/Users/"
 	}
 
 	if shareDir != "" {
@@ -386,10 +388,12 @@ func (d *Driver) Start() error {
 	log.Debugf("Mounting Shared Folders...")
 	var shareName, shareDir string // TODO configurable at some point
 	switch runtime.GOOS {
-	case "darwin":
+	case "linux":  // TODO Test linux working
+		shareName = "Home"
+		shareDir = "/Home"
+	case "windows":
 		shareName = "Users"
-		shareDir = "/Users"
-		// TODO "linux" and "windows"
+		shareDir = "C:/Users/"
 	}
 
 	if shareDir != "" {
