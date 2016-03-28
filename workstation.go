@@ -353,9 +353,9 @@ func (d *Driver) Create() error {
 	// Enable Shared Folders
 	vmrun("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
 
-	var shareName, shareDir, guestFolder string // TODO configurable at some point
+	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
 	switch runtime.GOOS {
-	case "linux":  // TODO Test linux working
+	case "linux": // TODO Test linux working
 		shareName = "Home"
 		shareDir = "/Home"
 		guestFolder = "/Users"
@@ -390,9 +390,9 @@ func (d *Driver) Start() error {
 	}
 
 	log.Debugf("Mounting Shared Folders...")
-	var shareName, shareDir, guestFolder string // TODO configurable at some point
+	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
 	switch runtime.GOOS {
-	case "linux":  // TODO Test linux working
+	case "linux": // TODO Test linux working
 		shareName = "Home"
 		shareDir = "/Home"
 		guestFolder = "/Users"
