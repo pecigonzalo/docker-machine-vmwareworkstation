@@ -19,9 +19,9 @@ environment:
   GOPATH: c:\gopath
   matrix:
   - GOARCH: 386
-    GOVERSION: 1.4.3
+    GOVERSION: 1.6
   - GOARCH: amd64
-    GOVERSION: 1.4.3
+    GOVERSION: 1.6
 
 init:
   - git config --global core.autocrlf input
