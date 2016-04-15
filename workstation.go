@@ -373,7 +373,14 @@ func (d *Driver) Create() error {
 		} else if !os.IsNotExist(err) {
 			// add shared folder, create mountpoint and mount it.
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(), shareName, shareDir)
-			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder + "; [ ! -d" + guestCompatLink + " ]&& sudo ln -d " + guestFolder + " " + guestCompatLink + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
+
+			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
+			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
+				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
+				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
+				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
+				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
+			log.Debug(command)
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
@@ -409,7 +416,15 @@ func (d *Driver) Start() error {
 			return err
 		} else if !os.IsNotExist(err) {
 			// create mountpoint and mount shared folder
-			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder + "; [ ! -d" + guestCompatLink + " ]&& sudo ln -d " + guestFolder + " " + guestCompatLink + "; [ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" + shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
+			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
+			// TODO make it an array and do foreach run
+			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
+				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
+				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
+				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
+				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
+			log.Debug(command)
+
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
@@ -436,6 +451,40 @@ func (d *Driver) Remove() error {
 
 func (d *Driver) Restart() error {
 	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
+	
+	log.Debugf("Mounting Shared Folders...")
+	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
+	switch runtime.GOOS {
+	case "linux": // TODO Test linux working
+		shareName = "Home"
+		shareDir = "/Home"
+		guestFolder = "/Users"
+		guestCompatLink = "/Home"
+	case "windows":
+		shareName = "Users"
+		shareDir = `C:\Users\`
+		guestFolder = "/Users"
+		guestCompatLink = "/c/Users"
+	}
+
+	if shareDir != "" {
+		if _, err := os.Stat(shareDir); err != nil && !os.IsNotExist(err) {
+			return err
+		} else if !os.IsNotExist(err) {
+			// create mountpoint and mount shared folder
+			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
+			// TODO make it an array and do foreach run
+			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
+				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
+				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
+				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
+				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
+			log.Debug(command)
+
+			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+		}
+	}
+	
 	return err
 }
 

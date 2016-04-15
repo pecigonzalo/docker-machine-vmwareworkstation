@@ -36,7 +36,6 @@ install:
   - go version
   - go env
   - go get -d -v -t ./...
-  - go get golang.org/x/tools/cmd/vet
 
 build_script:
   - go test -v ./...
