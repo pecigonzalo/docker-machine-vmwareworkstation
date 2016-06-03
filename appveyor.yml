@@ -16,6 +16,8 @@ clone_depth: 5
 os: Windows Server 2012 R2
 
 environment:
+  CHOCOLATEY_TOKEN:
+    secure: TBD
   GOPATH: c:\gopath
   matrix:
   - GOARCH: 386
@@ -29,6 +31,7 @@ init:
 # Build
 
 install:
+  - choco install vmwareworkstation # to have vmrun.exe for unit tests
   - set Path=c:\go\bin;%Path%
   - echo %Path%
   - appveyor DownloadFile https://storage.googleapis.com/golang/go%GOVERSION%.windows-%GOARCH%.msi
@@ -42,8 +45,10 @@ build_script:
   - go vet ./...
   - git rev-parse HEAD
   - go build -i -o ./bin/docker-machine-driver-vmwareworkstation_windows-%GOARCH%.exe ./cmd/
+  - ps: cd choco; cpack; cd ..
 
-test: off
+test_script:
+  - ps: cd choco; .\test.ps1 -cpu %GOARCH%; cd ..
 
 # Deploy
 artifacts:
@@ -57,3 +62,13 @@ deploy:
   on:
     branch: master                 # release from master branch only
     appveyor_repo_tag: true        # deploy on tag push only
+
+deploy_script:
+  - ps: >-
+      Write-Host $env:APPVEYOR_REPO_TAG ;
+      if($env:APPVEYOR_REPO_BRANCH -eq 'master' -And $env:APPVEYOR_REPO_TAG -eq 'true') {
+        $version = $env:APPVEYOR_BUILD_VERSION -replace('\.[^.\\/]+$') ;
+        cd choco ;
+        choco apiKey -k $env:CHOCOLATEY_TOKEN -source https://chocolatey.org/ ;
+        choco push docker-machine-vmwareworkstation.$version.nupkg
+      }
