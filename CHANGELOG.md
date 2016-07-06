@@ -1,6 +1,10 @@
 # Changelog
 
 ## 1.0.10
+IMPROVEMENTS:
+ * Mount on both /c/Users and /Users for compatibility
+ * Use glide for dependancy vendoring
+ * Update documentation
 
 ## 1.0.0
 

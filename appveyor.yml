@@ -16,7 +16,10 @@ clone_depth: 5
 os: Windows Server 2012 R2
 
 environment:
+  MSYSTEM: MINGW64
+  Msys: winsymlink:nativestrict
   GOPATH: c:\gopath
+  Path: c:\go\bin;c:\gopath\bin;C:\msys64\usr\local\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;%PATH%
   matrix:
   - GOARCH: 386
     GOVERSION: 1.6
@@ -24,30 +27,27 @@ environment:
     GOVERSION: 1.6
 
 init:
-  - git config --global core.autocrlf input
+  - ps: git config --global core.autocrlf input
+  - pacman -Sy
+  - pacman -S --noconfirm make wget curl bzr git mercurial subversion
 
 # Build
-
 install:
-  - set Path=c:\go\bin;%Path%
-  - echo %Path%
   - appveyor DownloadFile https://storage.googleapis.com/golang/go%GOVERSION%.windows-%GOARCH%.msi
   - msiexec /i go%GOVERSION%.windows-%GOARCH%.msi /q
-  - go version
-  - go env
-  - go get -d -v -t ./...
+  - ps: echo $env:Path
+  - make deps
 
 build_script:
-  - go test -v ./...
-  - go vet ./...
   - git rev-parse HEAD
-  - go build -i -o ./bin/docker-machine-driver-vmwareworkstation_windows-%GOARCH%.exe ./cmd/
+  - make test
+  - make build
 
 test: off
 
 # Deploy
 artifacts:
-  - path: /bin/docker-machine-driver-vmwareworkstation_*-*.exe
+  - path: //bin/docker-machine-driver-vmwareworkstation.exe
 
 deploy:
   provider: GitHub

@@ -26,7 +26,7 @@ As the title says this is still WIP and im working to add functionality listed o
 ## Requirements
 * Windows 7+ (for now)
 * [Docker Machine](https://docs.docker.com/machine/) 0.5.0+
-* [VMware Workstation](https://www.vmware.com/products/workstation)
+* [VMware Workstation](https://www.vmware.com/products/workstation) Workstation Free/Pro 10 +
 
 ## Installation
 
@@ -74,14 +74,14 @@ Environment variables and default values:
 | `--vmwareworkstation-cpu-count`       | `WORKSTATION_CPU_COUNT`       | `1`                      |
 | `--vmwareworkstation-disk-size`       | `WORKSTATION_DISK_SIZE`       | `20000`                  |
 | `--vmwareworkstation-memory-size`     | `WORKSTATION_MEMORY_SIZE`     | `1024`                   |
-| `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `B2DUser`                |
-| `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `B2DPass`                |
+| `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `docker`                 |
+| `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `tcuser`                 |
 
 ## Development
 
 ### Build from Source
 If you wish to work on VMWare Workstation Driver for Docker machine, you'll first need
-* [Go](http://www.golang.org) installed (version 1.5+ is required).
+* [Go](http://www.golang.org) installed (version 1.6+ is required).
   * Make sure Go is properly installed, including setting up a [GOPATH](http://golang.org/doc/code.html#GOPATH).
 * [MSYS](https://msys2.github.io/)
   * **Make** We well need to use pacman to install make
