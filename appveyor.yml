@@ -37,6 +37,9 @@ install:
   - go env
   - go get -d -v -t ./...
 
+cache:
+  - '%USERPROFILE%\.glide\cache'
+
 build_script:
   - go test -v ./...
   - go vet ./...
