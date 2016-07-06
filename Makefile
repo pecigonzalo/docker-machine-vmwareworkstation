@@ -1,17 +1,20 @@
 #export GO15VENDOREXPERIMENT = 1
 
-default: test build
+default: deps test build
 
-test: clean
-	go get -d -v -t ./...
-	go test -v ./...
-	go vet ./...
+deps: clean
+	go get github.com/Masterminds/glide
+	glide install
 
-build: clean
-	go get -d -v -t ./...
+test:
+	go test -v $(glide novendor)
+	go vet $(glide novendor)
+
+build:
 	go build -i -o ./bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
 
 clean:
+	$(RM) -rf vendor
 	$(RM) bin/*
 
-.PHONY: clean test build
+.PHONY: clean deps test build
