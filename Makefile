@@ -2,16 +2,19 @@
 
 default: test build
 
-test: clean
-	go get -d -v -t ./...
+deps:
+	go get github.com/Masterminds/glide
+	glide install
+
+test: deps
 	go test -v ./...
 	go vet ./...
 
-build: clean
-	go get -d -v -t ./...
+build: deps
 	go build -i -o ./bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
 
 clean:
+	$(RM) -rf vendor
 	$(RM) bin/*
 
 .PHONY: clean test build

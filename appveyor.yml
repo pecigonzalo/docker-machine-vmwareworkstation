@@ -29,13 +29,14 @@ init:
 # Build
 
 install:
-  - set Path=c:\go\bin;%Path%
+  - set Path=c:\go\bin;%GOPATH%/bin;%Path%
   - echo %Path%
   - appveyor DownloadFile https://storage.googleapis.com/golang/go%GOVERSION%.windows-%GOARCH%.msi
   - msiexec /i go%GOVERSION%.windows-%GOARCH%.msi /q
   - go version
   - go env
-  - go get -d -v -t ./...
+  - go get github.com/Masterminds/glide
+  - glide install
 
 build_script:
   - go test -v ./...
