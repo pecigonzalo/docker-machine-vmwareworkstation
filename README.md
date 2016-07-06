@@ -74,8 +74,8 @@ Environment variables and default values:
 | `--vmwareworkstation-cpu-count`       | `WORKSTATION_CPU_COUNT`       | `1`                      |
 | `--vmwareworkstation-disk-size`       | `WORKSTATION_DISK_SIZE`       | `20000`                  |
 | `--vmwareworkstation-memory-size`     | `WORKSTATION_MEMORY_SIZE`     | `1024`                   |
-| `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `docker`                 |
-| `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `tcuser`                 |
+| `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `B2DUser`                |
+| `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `B2DPass`                |
 
 ## Development
 
