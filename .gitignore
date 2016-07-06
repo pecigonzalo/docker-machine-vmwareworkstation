@@ -1,5 +1,5 @@
 # Glide
-./vendor
+vendor/
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
@@ -26,4 +26,4 @@ _testmain.go
 *.test
 *.prof
 
-./bin
+bin/

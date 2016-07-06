@@ -1,5 +1,5 @@
-hash: 0eab0bf30d2ef80ce6f6c02e2071f7477a7ab5e30a22572bf930a68feb47b6ae
-updated: 2016-07-06T11:26:53.4572057+02:00
+hash: 75294a28793879eedd26ccceee2979bef691bf02eb7c99c4ab34d214db8cfe96
+updated: 2016-07-06T13:07:31.3243298+02:00
 imports:
 - name: github.com/docker/docker
   version: a8a31eff10544860d2188dddabdee4d727545796
@@ -9,30 +9,22 @@ imports:
   version: a650a404fc3e006fea17b12615266168db79c776
   subpackages:
   - libmachine/drivers
+  - libmachine/drivers/plugin
   - libmachine/log
   - libmachine/mcnflag
   - libmachine/mcnutils
   - libmachine/ssh
   - libmachine/state
-  - libmachine/drivers/plugin
   - version
   - libmachine/drivers/plugin/localbinary
   - libmachine/drivers/rpc
   - libmachine/version
-- name: github.com/gorilla/mux
-  version: 9fa818a44c2bf1396a17f9d5a3c0f6dd39d2ff8e
-- name: github.com/Sirupsen/logrus
-  version: f3cfb454f4c209e6668c95216c4744b8fddb2356
 - name: golang.org/x/crypto
   version: beef0f4390813b96e8e68fd78570396d0f4751fc
   subpackages:
   - ssh
   - ssh/terminal
   - curve25519
-- name: google.golang.org/grpc
-  version: a0ff1e78a98cd140c2d18a0210ab0a2a183a2b4c
-  subpackages:
-  - credentials/oauth
 testImports:
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
