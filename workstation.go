@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"text/template"
@@ -184,7 +185,7 @@ func (d *Driver) GetIP() (string, error) {
 		return "", drivers.ErrHostIsNotRunning
 	}
 
-	ip, err := d.getIPfromVmrun()
+	ip, err := d.getIPfromDHCPLease()
 	if err != nil {
 		return "", err
 	}
@@ -198,11 +199,7 @@ func (d *Driver) GetState() (state.State, error) {
 	if err != nil {
 		return state.Error, err
 	}
-	//if stdout, _, _ := vmrun("list"); strings.Contains(stdout, vmxp) {
-	stdout, _, _ := vmrun("list")
-	stdout = strings.ToLower(stdout)
-	vmxp = strings.ToLower(vmxp)
-	if strings.Contains(stdout, vmxp) {
+	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, vmxp) {
 		return state.Running, nil
 	}
 	return state.Stopped, nil
@@ -274,7 +271,7 @@ func (d *Driver) Create() error {
 
 	log.Infof("Waiting for VM to come online...")
 	for i := 1; i <= 60; i++ {
-		ip, err = d.getIPfromVmrun()
+		ip, err = d.getIPfromDHCPLease()
 		if err != nil {
 			log.Debugf("Not there yet %d/%d, error: %s", i, 60, err)
 			time.Sleep(2 * time.Second)
@@ -454,7 +451,7 @@ func (d *Driver) Remove() error {
 
 func (d *Driver) Restart() error {
 	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
-
+	
 	log.Debugf("Mounting Shared Folders...")
 	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
 	switch runtime.GOOS {
@@ -487,7 +484,7 @@ func (d *Driver) Restart() error {
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
-
+	
 	return err
 }
 
@@ -508,17 +505,89 @@ func (d *Driver) vmdkPath() string {
 	return d.ResolveStorePath(fmt.Sprintf("%s.vmdk", d.MachineName))
 }
 
-func (d *Driver) getIPfromVmrun() (string, error) {
-	vmxp, err := filepath.EvalSymlinks(d.vmxPath())
-	if err != nil {
+func (d *Driver) getIPfromDHCPLease() (string, error) {
+	var vmxfh *os.File
+	var dhcpfh *os.File
+	var vmxcontent []byte
+	var dhcpcontent []byte
+	var macaddr string
+	var err error
+	var lastipmatch string
+	var currentip string
+	var lastleaseendtime time.Time
+	var currentleadeendtime time.Time
+
+	// DHCP lease table for NAT vmnet interface
+	var dhcpfile = workstationDhcpLeasesPath()
+	if dhcpfile == "" {
+		return "", fmt.Errorf("no DHCP leases path found.")
+	}
+
+	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
 		return "", err
 	}
-	stdout, _, _ := vmrun("getGuestIpAddress", vmxp)
-	stdout = strings.TrimSpace(stdout)
-	if strings.Contains(stdout, "Error") {
-		return "", fmt.Errorf("IP not found")
+	defer vmxfh.Close()
+
+	if vmxcontent, err = ioutil.ReadAll(vmxfh); err != nil {
+		return "", err
 	}
-	return stdout, nil
+
+	// Look for generatedAddress as we're passing a VMX with addressType = "generated".
+	vmxparse := regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
+	for _, line := range strings.Split(string(vmxcontent), "\n") {
+		if matches := vmxparse.FindStringSubmatch(line); matches == nil {
+			continue
+		} else {
+			macaddr = strings.ToLower(matches[1])
+		}
+	}
+
+	if macaddr == "" {
+		return "", fmt.Errorf("couldn't find MAC address in VMX file %s", d.vmxPath())
+	}
+
+	log.Debugf("MAC address in VMX: %s", macaddr)
+	if dhcpfh, err = os.Open(dhcpfile); err != nil {
+		return "", err
+	}
+	defer dhcpfh.Close()
+
+	if dhcpcontent, err = ioutil.ReadAll(dhcpfh); err != nil {
+		return "", err
+	}
+
+	// Get the IP from the lease table.
+	leaseip := regexp.MustCompile(`^lease (.+?) {$`)
+	// Get the lease end date time.
+	leaseend := regexp.MustCompile(`^\s*ends \d (.+?);$`)
+	// Get the MAC address associated.
+	leasemac := regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
+
+	for _, line := range strings.Split(string(dhcpcontent), "\r\n") {
+
+		if matches := leaseip.FindStringSubmatch(line); matches != nil {
+			lastipmatch = matches[1]
+			continue
+		}
+
+		if matches := leaseend.FindStringSubmatch(line); matches != nil {
+			lastleaseendtime, _ = time.Parse("2006/01/02 15:04:05", matches[1])
+			continue
+		}
+
+		if matches := leasemac.FindStringSubmatch(line); matches != nil && matches[1] == macaddr && currentleadeendtime.Before(lastleaseendtime) {
+			currentip = lastipmatch
+			currentleadeendtime = lastleaseendtime
+		}
+	}
+
+	if currentip == "" {
+		return "", fmt.Errorf("IP not found for MAC %s in DHCP leases", macaddr)
+	}
+
+	log.Debugf("IP found in DHCP lease table: %s", currentip)
+	return currentip, nil
+
 }
 
 func (d *Driver) publicSSHKeyPath() string {
