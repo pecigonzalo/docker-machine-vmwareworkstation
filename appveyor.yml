@@ -38,6 +38,9 @@ install:
   - ps: echo $env:Path
   - make deps
 
+cache:
+  - '%USERPROFILE%\.glide\cache'
+
 build_script:
   - git rev-parse HEAD
   - make test
