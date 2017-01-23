@@ -12,30 +12,25 @@ clone_folder: c:\gopath\src\github.com\pecigonzalo\docker-machine-vmwareworkstat
 clone_depth: 5
 
 # Build host
-
 os: Windows Server 2012 R2
 
 environment:
   MSYSTEM: MINGW64
   Msys: winsymlink:nativestrict
   GOPATH: c:\gopath
-  Path: c:\go\bin;c:\gopath\bin;C:\msys64\usr\local\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;%PATH%
-  matrix:
-  - GOARCH: 386
-    GOVERSION: 1.6
-  - GOARCH: amd64
-    GOVERSION: 1.6
+  Path: c:\go\bin;%GOPATH%\bin;C:\msys64\usr\local\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;%PATH%
 
 init:
   - ps: git config --global core.autocrlf input
   - pacman -Sy
-  - pacman -S --noconfirm make wget curl bzr git mercurial subversion
+  - pacman -S --noconfirm --needed make wget curl
 
 # Build
 install:
-  - appveyor DownloadFile https://storage.googleapis.com/golang/go%GOVERSION%.windows-%GOARCH%.msi
-  - msiexec /i go%GOVERSION%.windows-%GOARCH%.msi /q
+  - go version
+  - go env
   - ps: echo $env:Path
+  - make clean
   - make deps
 
 cache:
@@ -50,7 +45,7 @@ test: off
 
 # Deploy
 artifacts:
-  - path: //bin/docker-machine-driver-vmwareworkstation.exe
+  - path: /bin/docker-machine-driver-vmwareworkstation.exe
 
 deploy:
   provider: GitHub
