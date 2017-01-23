@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+IMPROVEMENTS:
+* Updated docker-machine deps
+* Updated testImport deps
+* Fixes #32 (Unable to complete build when .docker folder is on a symlink)
+
 ## 1.0.10
 IMPROVEMENTS:
  * Mount on both /c/Users and /Users for compatibility

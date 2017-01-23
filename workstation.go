@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -193,13 +192,13 @@ func (d *Driver) GetIP() (string, error) {
 	return ip, nil
 }
 
+// GetState returns the current state of the machine.
 func (d *Driver) GetState() (state.State, error) {
 	// VMRUN only tells use if the vm is running or not
-	vmxp, err := filepath.EvalSymlinks(d.vmxPath())
-	if err != nil {
+	if _, err := os.Stat(d.vmxPath()); os.IsNotExist(err) {
 		return state.Error, err
 	}
-	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, vmxp) {
+	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, d.vmxPath()) {
 		return state.Running, nil
 	}
 	return state.Stopped, nil
@@ -451,7 +450,7 @@ func (d *Driver) Remove() error {
 
 func (d *Driver) Restart() error {
 	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
-	
+
 	log.Debugf("Mounting Shared Folders...")
 	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
 	switch runtime.GOOS {
@@ -484,7 +483,7 @@ func (d *Driver) Restart() error {
 			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
-	
+
 	return err
 }
 
