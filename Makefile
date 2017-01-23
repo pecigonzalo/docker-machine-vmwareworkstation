@@ -2,7 +2,7 @@
 
 default: deps test build
 
-deps: clean
+deps:
 	go get github.com/Masterminds/glide
 	glide install
 
