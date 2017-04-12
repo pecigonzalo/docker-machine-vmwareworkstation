@@ -45,6 +45,9 @@ Replace contents of "C:\Program Files\Docker Toolbox\start.sh" with this
 ```bash
 #!/bin/bash
 
+# Uncomment this to enable debug output:
+# export MACHINE_DEBUG="TRUE"
+
 export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"
 
 trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
