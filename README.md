@@ -45,7 +45,10 @@ Replace contents of "C:\Program Files\Docker Toolbox\start.sh" with this
 ```bash
 #!/bin/bash
 
-export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"
+# Uncomment this to enable debug output:
+# export MACHINE_DEBUG="TRUE"
+
+export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"
 
 trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
 
@@ -68,7 +71,7 @@ VM_EXISTS_CODE=$?
 set -e
 
 STEP="Checking if machine $VM exists"
-if [ $VM_EXISTS_CODE -eq 1 ]; then
+if [ $VM_EXISTS_CODE -ne 1 ]; then
   "${DOCKER_MACHINE}" rm -f "${VM}" &> /dev/null || :
   rm -rf ~/.docker/machine/machines/"${VM}"
   #set proxy variables if they exists
