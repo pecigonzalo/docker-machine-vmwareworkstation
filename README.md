@@ -45,7 +45,7 @@ Replace contents of "C:\Program Files\Docker Toolbox\start.sh" with this
 ```bash
 #!/bin/bash
 
-export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"
+export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"
 
 trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
 
