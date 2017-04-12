@@ -71,7 +71,7 @@ VM_EXISTS_CODE=$?
 set -e
 
 STEP="Checking if machine $VM exists"
-if [ $VM_EXISTS_CODE -eq 1 ]; then
+if [ $VM_EXISTS_CODE -ne 1 ]; then
   "${DOCKER_MACHINE}" rm -f "${VM}" &> /dev/null || :
   rm -rf ~/.docker/machine/machines/"${VM}"
   #set proxy variables if they exists
