@@ -54,7 +54,7 @@ add it to your $PATH.
     ```none
     #!/bin/bash
 
-    export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"
+    export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"
 
     trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
 
@@ -71,7 +71,7 @@ add it to your $PATH.
       exit 1
     fi
 
-    vmrun.exe list | grep \""${VM}"\" &> /dev/null
+    vmrun.exe list | grep "${VM}" &> /dev/null
     VM_EXISTS_CODE=$?
 
     set -e
