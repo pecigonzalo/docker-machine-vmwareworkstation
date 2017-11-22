@@ -54,7 +54,7 @@ add it to your $PATH.
     ```none
     #!/bin/bash
 
-    export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"
+    export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"
 
     trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
 
@@ -140,6 +140,22 @@ add it to your $PATH.
     Credit for the above script to [@gtirloni](https://github.com/gtirloni)
 
 ## Usage
+
+Usage `WSL (Windows Subsystem for Linux)` can be perfect to run this scripts, otherwise you can only modify the script after using `Git Bash` to run.
+So you'd better install and use `WSL` to run scripts.
+
+Three ways:
+1.`Win + R` Combination key, Open `Run` window.
+    Enter & Run `bash` command.
+    Enter & Run `C:\Program Files\Docker Toolbox\start.sh` in `bash` window.
+    
+2.Change `export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"` to `export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"` in `start.sh`.
+    Find `Docker Quickstart Terminal` on the desktop and double-click to run(need installed `Git Bash`).
+    
+3.Change `export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"` to `export PATH="$PATH:/c/Program Files (x86)/VMware/VMware Workstation"` in `C:\Program Files\Docker Toolbox\start.sh`.
+    Find `Git Bash` on the desktop and double-click to run.
+    Enter `"C:\Program Files\Docker Toolbox\start.sh"` run in `Git Bash`.
+
 
 Official documentation for Docker Machine is available
 [here](https://docs.docker.com/machine/).
