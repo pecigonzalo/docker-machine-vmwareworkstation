@@ -1,17 +1,26 @@
-#export GO15VENDOREXPERIMENT = 1
+GOOS=windows
+GOARCH=amd64
 
 default: deps test build
 
 deps:
 	go get github.com/Masterminds/glide
-	glide install
+	glide instal
 
 test:
-	go test -v $(glide novendor)
-	go vet $(glide novendor)
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go test
+
+vet:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go vet
 
 build:
-	go build -i -o ./bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build \
+		-i \
+		-o ./bin/docker-machine-driver-vmwareworkstation.exe \
+		./cmd/
 
 clean:
 	$(RM) -rf vendor
