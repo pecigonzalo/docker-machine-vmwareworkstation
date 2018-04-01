@@ -1,18 +1,15 @@
 # appveyor.yml reference : http://www.appveyor.com/docs/appveyor-yml
-
-version: "1.1.0.{build}"
+version: "2.0.0.{build}"
 
 # Source Config
-pull_requests:
-  do_not_increment_build_number: true
+platform: x64
 branches:
   only:
     - master
+pull_requests:
+  do_not_increment_build_number: true
 clone_folder: c:\gopath\src\github.com\pecigonzalo\docker-machine-vmwareworkstation
 clone_depth: 5
-
-# Build host
-os: Windows Server 2012 R2
 
 environment:
   MSYSTEM: MINGW64
@@ -22,23 +19,24 @@ environment:
 
 init:
   - ps: git config --global core.autocrlf input
+
+install:
   - pacman -Sy
   - pacman -S --noconfirm --needed make wget curl
-
-# Build
-install:
-  - go version
-  - go env
-  - ps: echo $env:Path
+  - mkdir -p %GOPATH%\bin
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
   - make clean
   - make deps
 
-cache:
-  - '%USERPROFILE%\.glide\cache'
+before_build:
+  - go version
+  - go env
+  - ps: echo $env:Path
 
+# Build
 build_script:
   - git rev-parse HEAD
-  - make test
+  - make vet test
   - make build
 
 test: off

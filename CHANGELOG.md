@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.0
+IMPROVEMENTS:
+* Update github.com/docker/machine to `0.14.0`
+
 ## 1.1.0
 IMPROVEMENTS:
 * Updated docker-machine deps
