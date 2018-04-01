@@ -4,8 +4,7 @@ GOARCH=amd64
 default: deps test build
 
 deps:
-	go get github.com/Masterminds/glide
-	glide instal
+	dep ensure
 
 test:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
