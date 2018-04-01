@@ -19,19 +19,21 @@ environment:
 
 init:
   - ps: git config --global core.autocrlf input
+
+install:
   - pacman -Sy
   - pacman -S --noconfirm --needed make wget curl
   - mkdir -p %GOPATH%\bin
   - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-
-# Build
-install:
-  - go version
-  - go env
-  - ps: echo $env:Path
   - make clean
   - make deps
 
+before_build:
+  - go version
+  - go env
+  - ps: echo $env:Path
+
+# Build
 build_script:
   - git rev-parse HEAD
   - make vet test
