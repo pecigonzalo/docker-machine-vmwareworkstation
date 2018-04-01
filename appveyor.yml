@@ -21,6 +21,7 @@ init:
   - ps: git config --global core.autocrlf input
   - pacman -Sy
   - pacman -S --noconfirm --needed make wget curl
+  - mkdir -p %GOPATH%\bin
   - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
 # Build
