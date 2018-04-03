@@ -1,3 +1,4 @@
+
 # Docker Machine VMware Workstation Driver
 
 [![Join the chat at https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation](https://badges.gitter.im/pecigonzalo/docker-machine-vmwareworkstation.svg)](https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
@@ -71,7 +72,7 @@ add it to your $PATH.
       exit 1
     fi
 
-    vmrun.exe list | grep \""${VM}"\" &> /dev/null
+    vmrun.exe list | grep "${VM}.vmx" &> /dev/null
     VM_EXISTS_CODE=$?
 
     set -e
@@ -90,13 +91,13 @@ add it to your $PATH.
       if [ -n ${NO_PROXY+x} ]; then
         PROXY_ENV="$PROXY_ENV --engine-env NO_PROXY=$NO_PROXY"
       fi  
-      "${DOCKER_MACHINE}" create -d vmwareworkstation $PROXY_ENV "${VM}"
+      MSYS_NO_PATHCONV=1 "${DOCKER_MACHINE}" create -d vmwareworkstation $PROXY_ENV "${VM}"
     fi
 
     STEP="Checking status on $VM"
     VM_STATUS="$(${DOCKER_MACHINE} status ${VM} 2>&1)"
     if [ "${VM_STATUS}" != "Running" ]; then
-      "${DOCKER_MACHINE}" start "${VM}"
+      MSYS_NO_PATHCONV=1 "${DOCKER_MACHINE}" start "${VM}"
       yes | "${DOCKER_MACHINE}" regenerate-certs "${VM}"
     fi
 
@@ -159,6 +160,9 @@ $ docker-machine create --driver=vmwareworkstation dev
  - `--vmwareworkstation-cpu-count`: Number of CPUs to use to create the VM (-1 to use the number of CPUs available).
  - `--vmwareworkstation-ssh-user`: SSH user
  - `--vmwareworkstation-ssh-password`: SSH password
+ - `--vmwareworkstation-no-share`: Disable the mount of your home directory
+ - `--vmwareworkstation-share-folder`: Mount the specified directory instead of the default home location. Format: dir:name
+ - `--vmwareworkstation-guest-share-link`: Additional link to the shared mount in the guest
 
 The `--vmwareworkstation-boot2docker-url` flag takes a few different forms. By
 default, if no value is specified for this flag, Machine checks locally for a
@@ -183,6 +187,9 @@ Environment variables and default values:
 | `--vmwareworkstation-memory-size`     | `WORKSTATION_MEMORY_SIZE`     | `1024`                   |
 | `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `docker`                 |
 | `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `tcuser`                 |
+| `--vmwareworkstation-no-share`        | `WORKSTATION_NO_SHARE`        | `false`                  |
+| `--vmwareworkstation-share-folder`    | `WORKSTATION_SHARE_FOLDER`    | Depends on host OS       |
+| `--vmwareworkstation-guest-share-link`| `WORKSTATION_GUEST_SHARE_LINK`| Depends on host OS       |
 
 ## Development
 
