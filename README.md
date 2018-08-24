@@ -49,29 +49,67 @@ add it to your $PATH.
 
     `DockerToolbox-.exe /COMPONENTS="Docker,DockerMachine"`
 
-2.  Replace contents of `C:\Program Files\Docker Toolbox\start.sh` with this script.
+2.  Add VMware Workstation installation path to environment variables
 
-    ```none
+    `VMWARE_INSTALL_PATH` → `C:\Program Files (x86)\VMware\VMware Workstation`
+
+3.  Replace contents of `C:\Program Files\Docker Toolbox\start.sh` with this script.
+
+    ```bash
     #!/bin/bash
-
-    export PATH="$PATH:/mnt/c/Program Files (x86)/VMware/VMware Workstation"
 
     trap '[ "$?" -eq 0 ] || read -p "Looks like something went wrong in step ´$STEP´... Press any key to continue..."' EXIT
 
+    #Quick Hack: used to convert e.g. "C:\Program Files\Docker Toolbox" to "/c/Program Files/Docker Toolbox"
+    win_to_unix_path(){ 
+        wd="$(pwd)"
+        cd "$1"
+            the_path="$(pwd)"
+        cd "$wd"
+        echo $the_path
+    }
+
+    # This is needed  to ensure that binaries provided
+    # by Docker Toolbox over-ride binaries provided by
+    # Docker for Windows when launching using the Quickstart.
+    export PATH="$(win_to_unix_path "${DOCKER_TOOLBOX_INSTALL_PATH}"):$PATH"
     VM=${DOCKER_MACHINE_NAME-default}
-    DOCKER_MACHINE=./docker-machine.exe
+    DOCKER_MACHINE="${DOCKER_TOOLBOX_INSTALL_PATH}\docker-machine.exe"
+
+    STEP="Looking for vmrun.exe"
+    VMRUN="${VMWARE_INSTALL_PATH}\vmrun.exe"
 
     BLUE='\033[1;34m'
     GREEN='\033[0;32m'
     NC='\033[0m'
 
+    #clear all_proxy if not socks address
+    if  [[ $ALL_PROXY != socks* ]]; then
+      unset ALL_PROXY
+    fi
+    if  [[ $all_proxy != socks* ]]; then
+      unset all_proxy
+    fi
 
     if [ ! -f "${DOCKER_MACHINE}" ]; then
       echo "Docker Machine is not installed. Please re-run the Toolbox Installer and try again."
       exit 1
     fi
 
-    vmrun.exe list | grep \""${VM}"\" &> /dev/null
+    if [ ! -f "${VMRUN}" ]; then
+      echo "VMware Workstation is not installed."
+      exit 1
+    fi
+
+    #fix bug #33
+    STEP="Try to start $VM"
+    VM_STATUS="$( set +e ; "${DOCKER_MACHINE}" status "${VM}" 2>/dev/null )"
+    if [ "${VM_STATUS}" == "Stopped" ]; then
+      "${DOCKER_MACHINE}" start "${VM}"
+      yes | "${DOCKER_MACHINE}" regenerate-certs "${VM}"
+    fi
+
+    "${VMRUN}" list | grep "${VM}.vmx" &> /dev/null
     VM_EXISTS_CODE=$?
 
     set -e
@@ -79,29 +117,30 @@ add it to your $PATH.
     STEP="Checking if machine $VM exists"
     if [ $VM_EXISTS_CODE -eq 1 ]; then
       "${DOCKER_MACHINE}" rm -f "${VM}" &> /dev/null || :
-      rm -rf ~/.docker/machine/machines/"${VM}"
+      rm -rf ~/.docker/machine/machines/${VM}
       #set proxy variables if they exists
-      if [ -n ${HTTP_PROXY+x} ]; then
+      if [ "${HTTP_PROXY}" ]; then
         PROXY_ENV="$PROXY_ENV --engine-env HTTP_PROXY=$HTTP_PROXY"
       fi
-      if [ -n ${HTTPS_PROXY+x} ]; then
+      if [ "${HTTPS_PROXY}" ]; then
         PROXY_ENV="$PROXY_ENV --engine-env HTTPS_PROXY=$HTTPS_PROXY"
       fi
-      if [ -n ${NO_PROXY+x} ]; then
+      if [ "${NO_PROXY}" ]; then
         PROXY_ENV="$PROXY_ENV --engine-env NO_PROXY=$NO_PROXY"
-      fi  
+      fi
       "${DOCKER_MACHINE}" create -d vmwareworkstation $PROXY_ENV "${VM}"
     fi
 
     STEP="Checking status on $VM"
-    VM_STATUS="$(${DOCKER_MACHINE} status ${VM} 2>&1)"
+    VM_STATUS="$( set +e ; "${DOCKER_MACHINE}" status "${VM}" )"
     if [ "${VM_STATUS}" != "Running" ]; then
       "${DOCKER_MACHINE}" start "${VM}"
       yes | "${DOCKER_MACHINE}" regenerate-certs "${VM}"
     fi
 
     STEP="Setting env"
-    eval "$(${DOCKER_MACHINE} env --shell=bash ${VM})"
+    eval "$("${DOCKER_MACHINE}" env --shell=bash --no-proxy "${VM}" | sed -e "s/export/SETX/g" | sed -e "s/=/ /g")" &> /dev/null #for persistent Environment Variables, available in next sessions
+    eval "$("${DOCKER_MACHINE}" env --shell=bash --no-proxy "${VM}")" #for transient Environment Variables, available in current session
 
     STEP="Finalize"
     clear
@@ -118,10 +157,11 @@ add it to your $PATH.
                   \____\_______/
 
     EOF
-    echo -e "${BLUE}docker${NC} is configured to use the ${GREEN}${VM}${NC} machine with IP ${GREEN}$(${DOCKER_MACHINE} ip ${VM})${NC}"
+    echo -e "${BLUE}docker${NC} is configured to use the ${GREEN}${VM}${NC} machine with IP ${GREEN}$("${DOCKER_MACHINE}" ip ${VM})${NC}"
     echo "For help getting started, check out the docs at https://docs.docker.com"
     echo
-    cd
+    echo 
+    #cd #Bad: working dir should be whatever directory was invoked from rather than fixed to the Home folder
 
     docker () {
       MSYS_NO_PATHCONV=1 docker.exe "$@"
