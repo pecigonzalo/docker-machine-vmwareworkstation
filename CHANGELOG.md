@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+IMPROVEMENTS:
+* Update golang and project structure to fit modern golang projects
+* Update CI
+
 ## 2.0.0
 IMPROVEMENTS:
 * Update github.com/docker/machine to `0.14.0`

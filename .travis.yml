@@ -1,0 +1,30 @@
+language: go
+go:
+  - "1.13"
+
+env:
+  global:
+    - VERSION=2.0.1
+
+before_script:
+  - go version
+  - go env
+
+  script:
+  - make test
+  - make
+
+before_deploy:
+  # Set up git user name and tag this commit
+  - git config --local user.name "Travis"
+  - git config --local user.email "pecigonzalo@users.noreply.github.com"
+  - export TRAVIS_TAG="${VERSION}"
+  - git tag "$TRAVIS_TAG"
+deploy:
+  provider: releases
+  api_key:
+    secure: WXvO6MS4dSGonZY5IPEtTtbkFY77klvHnUsv2FuLWj005/+cFNFFVNMxPWg+6Z/u94u2Qg3ob5eaV8oeG+I0EN5898cgF1iHRuUatZKkxQVErsCjlCpr4iR6LPSL/Z76aBWth+fm4emayyPymSBHjgC/8Nqk8lmv8Xekqcy6GW1Kybms3H+9dRpEn++8ITOxNNBh8ZNfNffBQvkD3/eYMQTIYto+zP4+8auldzahUnKBU0UqVM2AH8itiH/XX1c8i39eCmknIdr+GVFgH55i5qZTeNxMIb3qWWPkQ2iwut+d4cnJp8a7vbfTH4tyK81HR/IRFWzkms9te0EunVRFl/A4A6ivgNAzvW+VYdjdTcbUnNUwNdX9RmlLDm0k6wcgEqAEGYEbuWIB6dK52FyC0wl1mIxdxE6AN4F7AMEoRZO35RDyXQDt8QNJ+om1u0jRdnoY9DSkxh6fLogoi73Tsbuv7xUoHW8FhTKsbOaIGAP6aKqc60QBxP6tv1/RcDKZ6364cd+kQK16gC4h78RwBSArxy/MztWloSZ25Rga2Dr9uq3sd1KuuM6/qQdLS0oAhjwXiclFeseWncOmL2BetCmBcyEtlDHD2b50Z0LZsI1K4vN6FNvY4UsdVMlCyNMJp54sw0JPAbbnEzrc6U6SYcDskvOsQXxISpMRkA04dsA=
+  file: build/docker-machine-driver-vmwareworkstation-windows-amd64.exe
+  on:
+    repo: pecigonzalo/docker-machine-vmwareworkstation
+    banch: master
