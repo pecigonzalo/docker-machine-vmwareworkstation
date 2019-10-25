@@ -71,7 +71,7 @@ add it to your $PATH.
       exit 1
     fi
 
-    vmrun.exe list | grep \""${VM}"\" &> /dev/null
+    "${DOCKER_MACHINE}" ls | grep \""${VM}"\" &> /dev/null
     VM_EXISTS_CODE=$?
 
     set -e
