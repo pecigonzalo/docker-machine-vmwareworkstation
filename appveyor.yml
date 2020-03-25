@@ -1,8 +1,9 @@
 # appveyor.yml reference : http://www.appveyor.com/docs/appveyor-yml
-version: "2.0.0.{build}"
+version: "2.0.1.{build}"
 
 # Source Config
 platform: x64
+stack: go 1.13
 branches:
   only:
     - master
@@ -21,12 +22,7 @@ init:
   - ps: git config --global core.autocrlf input
 
 install:
-  - pacman -Sy
-  - pacman -S --noconfirm --needed make wget curl
-  - mkdir -p %GOPATH%\bin
-  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
   - make clean
-  - make deps
 
 before_build:
   - go version
@@ -36,10 +32,13 @@ before_build:
 # Build
 build_script:
   - git rev-parse HEAD
-  - make vet test
   - make build
 
-test: off
+before_test:
+  - go vet ./...
+
+test_script:
+  - go test -v -failfast ./...
 
 # Deploy
 artifacts:
@@ -47,9 +46,9 @@ artifacts:
 
 deploy:
   provider: GitHub
-  description: ' '
+  description: " "
   auth_token:
     secure: QqxdbpN5rJhuQw42Iq4W6tdP1Lu4aw6y88QnHYC3tSQ9rzNuEI/q+qH4HGJ5WDpj
   on:
-    branch: master                 # release from master branch only
-    appveyor_repo_tag: true        # deploy on tag push only
+    branch: master # release from master branch only
+    appveyor_repo_tag: true # deploy on tag push only

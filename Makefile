@@ -1,28 +1,19 @@
-GOOS=windows
-GOARCH=amd64
+SRC := $(shell find . -name '*.go')
+BINARY := docker-machine-driver-vmwareworkstation
+LDFLAGS=-s -w
 
-default: deps test build
+.PHONY: build
+build: build/$(BINARY)-windows-amd64.exe
 
-deps:
-	dep ensure
-
+.PHONY: test
 test:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go test
+	GOOS=windows GOARCH=amd64 go vet ./...
+	GOOS=windows GOARCH=amd64 go test -v ./...
 
-vet:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go vet
+build/$(BINARY)-windows-amd64.exe: $(SRC)
+	mkdir -p build
+	GOOS=windows GOARCH=amd64 go build -o build/$(BINARY)-windows-amd64.exe ./cmd/plugin
 
-build:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build \
-		-i \
-		-o ./bin/docker-machine-driver-vmwareworkstation.exe \
-		./cmd/
-
+.PHONY: clean
 clean:
-	$(RM) -rf vendor
-	$(RM) bin/*
-
-.PHONY: clean deps test build
+	-rm -rf build/*
