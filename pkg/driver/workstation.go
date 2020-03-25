@@ -45,6 +45,7 @@ const (
 // Driver for VMware Workstation
 type Driver struct {
 	*drivers.BaseDriver
+	VMWManager
 	Memory         int
 	DiskSize       int
 	CPU            int
@@ -129,6 +130,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
+		VMWManager:  NewVMWManager(),
 		CPUS:        defaultCpus,
 		Memory:      defaultMemory,
 		DiskSize:    defaultDiskSize,
@@ -245,7 +247,7 @@ func (d *Driver) GetState() (state.State, error) {
 	if _, err := os.Stat(d.vmxPath()); os.IsNotExist(err) {
 		return state.Error, err
 	}
-	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, d.vmxPath()) {
+	if stdout, _, _ := d.runOutErr(vmRunBin, "list"); strings.Contains(stdout, d.vmxPath()) {
 		return state.Running, nil
 	}
 	return state.Stopped, nil
@@ -305,13 +307,16 @@ func (d *Driver) Create() error {
 			return err
 		}
 
-		if err := vdiskmanager(diskImg, d.DiskSize); err != nil {
+		if _, _, err := d.runOutErr(
+			vDiskManBin, "-c", "-t", "0", "-s",
+			fmt.Sprintf("%dMB", d.DiskSize), "-a",
+			"lsilogic", diskImg); err != nil {
 			return err
 		}
 	}
 
 	log.Infof("Starting %s...", d.MachineName)
-	vmrun("start", d.vmxPath(), "nogui")
+	d.run(vmRunBin, "start", d.vmxPath(), "nogui")
 
 	var ip string
 
@@ -388,17 +393,17 @@ func (d *Driver) Create() error {
 	}
 
 	// Test if /var/lib/boot2docker exists
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
+	d.run(vmRunBin, "-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
 
 	// Copy SSH keys bundle
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
+	d.run(vmRunBin, "-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
 
 	// Expand tar file.
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
+	d.run(vmRunBin, "-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
 
 	if !d.NoShare {
 		// Enable Shared Folders
-		vmrun("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
+		d.run(vmRunBin, "-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
 		if err := mountSharedFolder(d); err != nil {
 			return err
 		}
@@ -410,7 +415,7 @@ func (d *Driver) Create() error {
 }
 
 func (d *Driver) Start() error {
-	vmrun("start", d.vmxPath(), "nogui")
+	d.run(vmRunBin, "start", d.vmxPath(), "nogui")
 
 	// Do not execute the rest of boot2docker specific configuration, exit here
 	if d.ConfigDriveURL != "" {
@@ -430,7 +435,7 @@ func (d *Driver) Start() error {
 }
 
 func (d *Driver) Stop() error {
-	_, _, err := vmrun("stop", d.vmxPath(), "nogui")
+	_, _, err := d.runOutErr(vmRunBin, "stop", d.vmxPath(), "nogui")
 	return err
 }
 
@@ -442,12 +447,12 @@ func (d *Driver) Remove() error {
 		}
 	}
 	log.Infof("Deleting %s...", d.MachineName)
-	vmrun("deleteVM", d.vmxPath(), "nogui")
+	d.run(vmRunBin, "deleteVM", d.vmxPath(), "nogui")
 	return nil
 }
 
 func (d *Driver) Restart() error {
-	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
+	_, _, err := d.runOutErr(vmRunBin, "reset", d.vmxPath(), "nogui")
 
 	if !d.NoShare {
 		if err := mountSharedFolder(d); err != nil {
@@ -461,7 +466,7 @@ func (d *Driver) Restart() error {
 }
 
 func (d *Driver) Kill() error {
-	_, _, err := vmrun("stop", d.vmxPath(), "hard nogui")
+	_, _, err := d.runOutErr(vmRunBin, "stop", d.vmxPath(), "hard nogui")
 	return err
 }
 
@@ -490,9 +495,9 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	var currentleadeendtime time.Time
 
 	// DHCP lease table for NAT vmnet interface
-	var dhcpfile = workstationDhcpLeasesPath()
+	var dhcpfile = workstationDhcpLeasesPath
 	if dhcpfile == "" {
-		return "", fmt.Errorf("no DHCP leases path found.")
+		return "", fmt.Errorf("no DHCP leases path found")
 	}
 
 	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
@@ -666,7 +671,7 @@ func mountSharedFolder(d *Driver) error {
 		} else if !os.IsNotExist(err) {
 			// Add Share folder config so VMWare
 			log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
-			vmrun(
+			d.run(vmRunBin,
 				"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
 				d.ShareName,
 				d.ShareFolder,
@@ -689,7 +694,7 @@ func mountSharedFolder(d *Driver) error {
 
 			if d.GuestCompatLink != "" {
 				// Add a compatibility symlink
-				compat_commands := []string{
+				compatCommands := []string{
 					fmt.Sprintf(
 						"[ ! -d %q ] && sudo mkdir -p %q",
 						d.GuestCompatLink,
@@ -703,12 +708,12 @@ func mountSharedFolder(d *Driver) error {
 						d.GuestCompatLink,
 					),
 				}
-				commands = append(commands, compat_commands...)
+				commands = append(commands, compatCommands...)
 			}
 
 			log.Debug(commands)
 			for _, command := range commands {
-				vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+				d.run(vmRunBin, "-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 			}
 		}
 	}
