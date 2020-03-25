@@ -128,7 +128,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	}
 }
 
-func NewDriver(hostName, storePath string) drivers.Driver {
+func NewDriver(hostName, storePath string) *Driver {
 	return &Driver{
 		VMWManager:  NewVMWManager(),
 		CPUS:        defaultCpus,

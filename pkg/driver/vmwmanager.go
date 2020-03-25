@@ -85,8 +85,10 @@ func (v *VMWCmdManager) runOutErrRetry(bin string, retry int, args ...string) (s
 
 	// Sometimes, we just need to retry...
 	if retry > 1 {
-		time.Sleep(retryDelay)
-		return v.runOutErrRetry(bin, retry-1, args...)
+		if err != nil {
+			time.Sleep(retryDelay)
+			return v.runOutErrRetry(bin, retry-1, args...)
+		}
 	}
 
 	return stdout.String(), stderrStr, err
