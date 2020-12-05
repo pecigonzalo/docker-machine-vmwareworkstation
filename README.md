@@ -201,7 +201,7 @@ first need:
   * Make sure Go is properly installed, including setting up a [GOPATH](http://golang.org/doc/code.html#GOPATH).
 
 * [MSYS](https://msys2.github.io/)
-  * **Make** We well need to use pacman to install make
+  * **Make** We will need to use pacman to install make
 
 * Currently, the build only works on Windows (WIP to get it to work on
   other platforms)
