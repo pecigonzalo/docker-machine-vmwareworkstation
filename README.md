@@ -199,8 +199,9 @@ first need:
 
 * [Go](https://go.dev/dl/) installed (the version in `go.mod` or newer).
   Alternatively, with [Nix](https://nixos.org/) run `nix develop` (or use
-  `direnv allow`) to get Go, golangci-lint, GoReleaser and make at compatible
+  `direnv allow`) to get Go, GoReleaser and make at compatible
   versions.
+  `make build` uses GoReleaser, which is also provided by the Nix shell.
 
 * Currently, the build only works on Windows (WIP to get it to work on
   other platforms). Other platforms can cross-compile with `GOOS=windows`,
@@ -217,8 +218,9 @@ make
 The build creates the binary as `bin/docker-machine-driver-vmwareworkstation.exe`.
 Copy it to a directory on your `PATH`.
 
-Other useful targets: `make lint` (requires
-[golangci-lint](https://golangci-lint.run/) v2) and `make test`. Releases are
+Other useful targets: `make lint` (builds the
+[golangci-lint](https://golangci-lint.run/) version pinned in `tools/go.mod`)
+and `make test`. Releases are
 built by [GoReleaser](https://goreleaser.com/) when a `v*` tag is pushed.
 
 ## Authors

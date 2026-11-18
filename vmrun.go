@@ -15,14 +15,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/rancher/machine/libmachine/log"
 	"golang.org/x/sys/windows/registry"
 )
 
+// The VMware binaries and paths are resolved lazily, on first use, so that
+// merely loading the plugin (e.g. for flag discovery) does not touch the
+// registry or the file system.
 var (
-	vmrunbin    = setVmwareCmd("vmrun.exe")
-	vdiskmanbin = setVmwareCmd("vmware-vdiskmanager.exe")
+	vmrunBin           = sync.OnceValue(func() string { return setVmwareCmd("vmrun.exe") })
+	vdiskmanBin        = sync.OnceValue(func() string { return setVmwareCmd("vmware-vdiskmanager.exe") })
+	programFilePaths   = sync.OnceValue(workstationProgramFilePaths)
+	dhcpLeasesFilePath = sync.OnceValue(workstationDhcpLeasesPath)
 )
 
 var (
@@ -65,7 +71,7 @@ func workstationDhcpLeasesPath() string {
 		return path
 	}
 
-	return findFile("vmnetdhcp.leases", workstationDataFilePaths())
+	return findFile("vmnetdhcp.leases", workstationDataFilePaths(path))
 }
 
 // workstationProgramFilesPaths returns a list of paths that are eligible
@@ -100,14 +106,12 @@ func workstationProgramFilePaths() []string {
 
 // workstationDataFilePaths returns a list of paths that are eligible
 // to contain data files we may want such as vmnet NAT configuration files.
-func workstationDataFilePaths() []string {
-	leasesPath, err := workstationDhcpLeasesPathRegistry()
-	if err != nil {
-		log.Errorf("Error getting DHCP leases path: %s", err)
-	}
-
-	if leasesPath != "" {
-		leasesPath = filepath.Dir(leasesPath)
+// registryLeasesPath is the DHCP leases file path read from the registry, or
+// empty if it is unavailable.
+func workstationDataFilePaths(registryLeasesPath string) []string {
+	leasesPath := ""
+	if registryLeasesPath != "" {
+		leasesPath = filepath.Dir(registryLeasesPath)
 	}
 
 	paths := make([]string, 0, 5)
@@ -137,11 +141,11 @@ func setVmwareCmd(cmd string) string {
 	if path, err := exec.LookPath(cmd); err == nil {
 		return path
 	}
-	return findFile(cmd, workstationProgramFilePaths())
+	return findFile(cmd, programFilePaths())
 }
 
 func vmrun(args ...string) (string, string, error) {
-	cmd := exec.Command(vmrunbin, args...)
+	cmd := exec.Command(vmrunBin(), args...)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -150,7 +154,7 @@ func vmrun(args ...string) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	log.Debugf("executing: %v %v", vmrunbin, strings.Join(args, " "))
+	log.Debugf("executing: %v %v", vmrunBin(), strings.Join(args, " "))
 
 	err := cmd.Run()
 	if err != nil {
@@ -164,7 +168,7 @@ func vmrun(args ...string) (string, string, error) {
 
 // Make a vmdk disk image with the given size (in MB).
 func vdiskmanager(dest string, size int) error {
-	cmd := exec.Command(vdiskmanbin, "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
+	cmd := exec.Command(vdiskmanBin(), "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

@@ -19,10 +19,10 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             go
-            golangci-lint # keep the major.minor in sync with .github/workflows/ci.yml
             goreleaser
             gnumake
           ];
+          # golangci-lint is pinned in tools/go.mod and built by `make lint`.
           # go.mod pins the minimum Go version; never fetch another toolchain.
           GOTOOLCHAIN = "local";
         };

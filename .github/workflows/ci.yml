@@ -9,6 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # golangci-lint is pinned in tools/go.mod (updated by Dependabot).
+      - run: go tool -modfile=tools/go.mod golangci-lint run ./...
+
   test:
     runs-on: windows-latest
     steps:
@@ -16,23 +26,22 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
+      - run: go test ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          # Keep in sync with golangci-lint in flake.nix (flake.lock).
-          version: v2.15.0
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test ./...
-      - name: Build
-        run: go build -trimpath -ldflags "-s -w" -o bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
+          go-version-file: go.mod
+      # Builds with the same config as the release, which also validates it.
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: build --snapshot --clean
       - uses: actions/upload-artifact@v7
         with:
           name: docker-machine-driver-vmwareworkstation-windows-amd64
-          path: bin/docker-machine-driver-vmwareworkstation.exe
-      - name: Check GoReleaser config
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          version: "~> v2"
-          args: check
+          path: dist/*/docker-machine-driver-vmwareworkstation.exe
+          retention-days: 7

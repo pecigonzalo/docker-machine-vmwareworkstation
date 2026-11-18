@@ -65,6 +65,8 @@ type Driver struct {
 	ShareFolder     string
 	GuestFolder     string
 	GuestCompatLink string
+
+	mac string // cached VM MAC address, see macAddress
 }
 
 // GetCreateFlags registers the flags this driver adds to
@@ -324,7 +326,9 @@ func (d *Driver) Create() error {
 	}
 
 	log.Infof("Starting %s...", d.MachineName)
-	vmrunBestEffort("start", d.vmxPath(), "nogui")
+	if err := vmrunChecked("start", "start", d.vmxPath(), "nogui"); err != nil {
+		return err
+	}
 
 	var (
 		ip  string
@@ -407,7 +411,9 @@ func (d *Driver) Create() error {
 	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
 
 	// Copy SSH keys bundle
-	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
+	if err := vmrunChecked("CopyFileFromHostToGuest", "-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar"); err != nil {
+		return err
+	}
 
 	// Expand tar file.
 	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
@@ -426,7 +432,9 @@ func (d *Driver) Create() error {
 }
 
 func (d *Driver) Start() error {
-	vmrunBestEffort("start", d.vmxPath(), "nogui")
+	if err := vmrunChecked("start", "start", d.vmxPath(), "nogui"); err != nil {
+		return err
+	}
 
 	// Do not execute the rest of boot2docker specific configuration, exit here
 	if d.ConfigDriveURL != "" {
@@ -458,8 +466,7 @@ func (d *Driver) Remove() error {
 		}
 	}
 	log.Infof("Deleting %s...", d.MachineName)
-	vmrunBestEffort("deleteVM", d.vmxPath(), "nogui")
-	return nil
+	return vmrunChecked("deleteVM", "deleteVM", d.vmxPath(), "nogui")
 }
 
 func (d *Driver) Restart() error {
@@ -500,57 +507,58 @@ var (
 	leasemac = regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
 )
 
-func (d *Driver) getIPfromDHCPLease() (string, error) {
-	var vmxfh *os.File
-	var dhcpfh *os.File
-	var vmxcontent []byte
-	var dhcpcontent []byte
+// macAddress returns the VM's generated MAC address from its VMX file. VMware
+// only writes it on first power-on, so it is looked up until found and cached.
+func (d *Driver) macAddress() (string, error) {
+	if d.mac != "" {
+		return d.mac, nil
+	}
+
+	vmxcontent, err := os.ReadFile(d.vmxPath())
+	if err != nil {
+		return "", err
+	}
+
 	var macaddr string
-	var err error
-	var lastipmatch string
-	var currentip string
-	var lastleaseendtime time.Time
-	var currentleadeendtime time.Time
-
-	// DHCP lease table for NAT vmnet interface
-	var dhcpfile = workstationDhcpLeasesPath()
-	if dhcpfile == "" {
-		return "", fmt.Errorf("no DHCP leases path found")
-	}
-
-	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
-		return "", err
-	}
-	defer func() { _ = vmxfh.Close() }()
-
-	if vmxcontent, err = io.ReadAll(vmxfh); err != nil {
-		return "", err
-	}
-
 	for line := range strings.SplitSeq(string(vmxcontent), "\n") {
-		if matches := vmxparse.FindStringSubmatch(line); matches == nil {
-			continue
-		} else {
+		if matches := vmxparse.FindStringSubmatch(line); matches != nil {
 			macaddr = strings.ToLower(matches[1])
 		}
 	}
-
 	if macaddr == "" {
 		return "", fmt.Errorf("couldn't find MAC address in VMX file %s", d.vmxPath())
 	}
 
 	log.Debugf("MAC address in VMX: %s", macaddr)
-	if dhcpfh, err = os.Open(dhcpfile); err != nil {
+	d.mac = macaddr
+	return macaddr, nil
+}
+
+func (d *Driver) getIPfromDHCPLease() (string, error) {
+	// DHCP lease table for NAT vmnet interface
+	dhcpfile := dhcpLeasesFilePath()
+	if dhcpfile == "" {
+		return "", fmt.Errorf("no DHCP leases path found")
+	}
+
+	macaddr, err := d.macAddress()
+	if err != nil {
 		return "", err
 	}
-	defer func() { _ = dhcpfh.Close() }()
 
-	if dhcpcontent, err = io.ReadAll(dhcpfh); err != nil {
+	// The lease table changes while the VM boots, so it is re-read on each call.
+	dhcpcontent, err := os.ReadFile(dhcpfile)
+	if err != nil {
 		return "", err
 	}
 
+	var (
+		lastipmatch         string
+		currentip           string
+		lastleaseendtime    time.Time
+		currentleadeendtime time.Time
+	)
 	for line := range strings.SplitSeq(string(dhcpcontent), "\r\n") {
-
 		if matches := leaseip.FindStringSubmatch(line); matches != nil {
 			lastipmatch = matches[1]
 			continue
@@ -573,7 +581,6 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 
 	log.Debugf("IP found in DHCP lease table: %s", currentip)
 	return currentip, nil
-
 }
 
 func (d *Driver) publicSSHKeyPath() string {
@@ -668,12 +675,22 @@ func executeSSHCommand(command string, d *Driver) error {
 	return nil
 }
 
-// vmrunBestEffort runs vmrun and logs, rather than returns, any failure.
-// It is used for guest-side setup steps that must not abort the machine
-// lifecycle operation.
+// vmrunChecked runs vmrun and returns an error, naming the operation and
+// including vmrun's output, if it fails.
+func vmrunChecked(op string, args ...string) error {
+	stdout, stderr, err := vmrun(args...)
+	if err != nil {
+		return fmt.Errorf("vmrun %s: %w: %s", op, err, strings.TrimSpace(stdout+stderr))
+	}
+	return nil
+}
+
+// vmrunBestEffort runs vmrun and logs, rather than returns, any failure. It is
+// only for optional guest-side steps whose failure must not abort the
+// operation.
 func vmrunBestEffort(args ...string) {
 	if _, _, err := vmrun(args...); err != nil {
-		log.Debugf("vmrun failed (continuing): %s", err)
+		log.Warnf("vmrun failed (continuing): %s", err)
 	}
 }
 
