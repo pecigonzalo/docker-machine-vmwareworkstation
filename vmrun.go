@@ -170,10 +170,11 @@ func vdiskmanager(dest string, size int) error {
 		cmd.Stderr = os.Stderr
 	}
 
-	if stdout := cmd.Run(); stdout != nil {
-		if errors.Is(stdout, exec.ErrNotFound) {
+	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
 			return ErrVMRUNNotFound
 		}
+		return fmt.Errorf("vmware-vdiskmanager: %w", err)
 	}
 	return nil
 }

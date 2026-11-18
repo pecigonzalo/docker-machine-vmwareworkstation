@@ -15,6 +15,7 @@ import (
 
 	"net"
 	"os"
+	"path"
 	"regexp"
 	"runtime"
 	"strings"
@@ -181,7 +182,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		d.CPU = 16
 	}
 
-	d.NoShare = flags.Bool("vmwareworkstation-share")
+	d.NoShare = flags.Bool("vmwareworkstation-no-share")
 	switch runtime.GOOS {
 
 	case "linux": // TODO Test linux working
@@ -195,21 +196,28 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		d.GuestCompatLink = "/c/Users"
 	}
 
-	if flags.String("vmwareworkstation-share-folder") != "" {
-		d.ShareName, d.ShareFolder = parseShareFolder(flags.String("vmwareworkstation-share-folder"))
+	if shareFolder := flags.String("vmwareworkstation-share-folder"); shareFolder != "" {
+		name, folder, err := parseShareFolder(shareFolder)
+		if err != nil {
+			return err
+		}
+		d.ShareName, d.ShareFolder = name, folder
 	}
-	if flags.String("vmwareworkstation-guest-share-link") != "" {
-		d.GuestCompatLink = flags.String("vmwareworkstation-guest-share-link")
+	if compat := flags.String("vmwareworkstation-share-compat"); compat != "" {
+		d.GuestCompatLink = compat
 	}
 
 	return nil
 }
 
-func parseShareFolder(shareFolder string) (string, string) {
-	split := strings.Split(shareFolder, ":")
-	ShareFolder := strings.Join(split[1:], ":")
-	ShareName := split[0]
-	return ShareFolder, ShareName
+// parseShareFolder splits a "name:dir" value into the share name and the host
+// directory. The directory may itself contain colons (e.g. C:\Users).
+func parseShareFolder(value string) (name, folder string, err error) {
+	name, folder, ok := strings.Cut(value, ":")
+	if !ok || name == "" || folder == "" {
+		return "", "", fmt.Errorf("invalid share folder %q, expected format name:dir", value)
+	}
+	return name, folder, nil
 }
 
 func (d *Driver) GetURL() (string, error) {
@@ -670,9 +678,10 @@ func mountSharedFolder(d *Driver) error {
 	log.Infof("Mounting Shared Folders...")
 	if d.ShareFolder != "" {
 		if _, err := os.Stat(d.ShareFolder); err != nil && !os.IsNotExist(err) {
-			log.Errorf("Shared folder %s does not exist on host", d.ShareFolder)
-			return err
-		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("cannot access shared folder %s: %w", d.ShareFolder, err)
+		} else if os.IsNotExist(err) {
+			log.Warnf("Shared folder %s does not exist on host, skipping", d.ShareFolder)
+		} else {
 			// Add Share folder config so VMWare
 			log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
 			vmrunBestEffort(
@@ -698,21 +707,10 @@ func mountSharedFolder(d *Driver) error {
 
 			if d.GuestCompatLink != "" {
 				// Add a compatibility symlink
-				compat_commands := []string{
-					fmt.Sprintf(
-						"[ ! -d %q ] && sudo mkdir -p %q",
-						d.GuestCompatLink,
-						d.GuestCompatLink,
-					),
-					fmt.Sprintf(
-						"[ ! -d %q ] && "+
-							"sudo ln -s %q %q",
-						d.GuestFolder,
-						d.GuestFolder,
-						d.GuestCompatLink,
-					),
-				}
-				commands = append(commands, compat_commands...)
+				commands = append(commands,
+					fmt.Sprintf("sudo mkdir -p %q", path.Dir(d.GuestCompatLink)),
+					fmt.Sprintf("[ -e %q ] || sudo ln -s %q %q", d.GuestCompatLink, d.GuestFolder, d.GuestCompatLink),
+				)
 			}
 
 			log.Debug(commands)

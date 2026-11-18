@@ -161,7 +161,7 @@ $ docker-machine create --driver=vmwareworkstation dev
  - `--vmwareworkstation-ssh-password`: SSH password
  - `--vmwareworkstation-no-share`: Disable the mount of your home directory
  - `--vmwareworkstation-share-folder`: Mount the specified directory instead of the default home location. Format: name:dir
- - `--vmwareworkstation-guest-share-link`: Additional link to the shared mount in the guest
+ - `--vmwareworkstation-share-compat`: Additional link to the shared mount in the guest
 
 The `--vmwareworkstation-boot2docker-url` flag takes a few different forms. By
 default, if no value is specified for this flag, Machine checks locally for a
