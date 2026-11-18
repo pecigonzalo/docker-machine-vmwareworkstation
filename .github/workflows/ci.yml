@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # Keep in sync with golangci-lint in flake.nix (flake.lock).
+          version: v2.15.0
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build -trimpath -ldflags "-s -w" -o bin/docker-machine-driver-vmwareworkstation.exe ./cmd/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docker-machine-driver-vmwareworkstation-windows-amd64
+          path: bin/docker-machine-driver-vmwareworkstation.exe
+      - name: Check GoReleaser config
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check

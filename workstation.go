@@ -11,7 +11,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
+
 	"net"
 	"os"
 	"regexp"
@@ -20,12 +21,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/docker/machine/libmachine/drivers"
-	"github.com/docker/machine/libmachine/log"
-	"github.com/docker/machine/libmachine/mcnflag"
-	"github.com/docker/machine/libmachine/mcnutils"
-	"github.com/docker/machine/libmachine/ssh"
-	"github.com/docker/machine/libmachine/state"
+	"github.com/rancher/machine/libmachine/drivers"
+	"github.com/rancher/machine/libmachine/log"
+	"github.com/rancher/machine/libmachine/mcnflag"
+	"github.com/rancher/machine/libmachine/mcnutils"
+	"github.com/rancher/machine/libmachine/ssh"
+	"github.com/rancher/machine/libmachine/state"
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
@@ -155,7 +156,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	// We support a maximum of 16 cpu to be consistent with Virtual Hardware 10
 	// specs.
 	if d.CPU < 1 {
-		d.CPU = int(runtime.NumCPU())
+		d.CPU = runtime.NumCPU()
 	}
 	if d.CPU > 16 {
 		d.CPU = 16
@@ -249,7 +250,13 @@ func (d *Driver) Create() error {
 	if err != nil {
 		return err
 	}
-	vmxt.Execute(vmxfile, d)
+	if err := vmxt.Execute(vmxfile, d); err != nil {
+		_ = vmxfile.Close()
+		return err
+	}
+	if err := vmxfile.Close(); err != nil {
+		return err
+	}
 
 	// Generate vmdk file
 	diskImg := d.ResolveStorePath(fmt.Sprintf("%s.vmdk", d.MachineName))
@@ -264,7 +271,7 @@ func (d *Driver) Create() error {
 	}
 
 	log.Infof("Starting %s...", d.MachineName)
-	vmrun("start", d.vmxPath(), "nogui")
+	vmrunBestEffort("start", d.vmxPath(), "nogui")
 
 	var ip string
 
@@ -279,19 +286,19 @@ func (d *Driver) Create() error {
 
 		if ip != "" {
 			log.Debugf("Got an ip: %s", ip)
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, 22), time.Duration(2*time.Second))
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, 22), 2*time.Second)
 			if err != nil {
 				log.Debugf("SSH Daemon not responding yet: %s", err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			conn.Close()
+			_ = conn.Close()
 			break
 		}
 	}
 
 	if ip == "" {
-		return fmt.Errorf("Machine didn't return an IP after 120 seconds, aborting")
+		return fmt.Errorf("machine didn't return an IP after 120 seconds, aborting")
 	}
 
 	// we got an IP, let's copy ssh keys over
@@ -315,9 +322,9 @@ func (d *Driver) Create() error {
 		if keyfh, err = os.Open(d.publicSSHKeyPath()); err != nil {
 			return err
 		}
-		defer keyfh.Close()
+		defer func() { _ = keyfh.Close() }()
 
-		if keycontent, err = ioutil.ReadAll(keyfh); err != nil {
+		if keycontent, err = io.ReadAll(keyfh); err != nil {
 			return err
 		}
 
@@ -341,16 +348,16 @@ func (d *Driver) Create() error {
 	}
 
 	// Test if /var/lib/boot2docker exists
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
 
 	// Copy SSH keys bundle
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
 
 	// Expand tar file.
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
 
 	// Enable Shared Folders
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
 
 	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
 	switch runtime.GOOS {
@@ -371,7 +378,7 @@ func (d *Driver) Create() error {
 			return err
 		} else if !os.IsNotExist(err) {
 			// add shared folder, create mountpoint and mount it.
-			vmrun("-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(), shareName, shareDir)
+			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(), shareName, shareDir)
 
 			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
 			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
@@ -380,14 +387,14 @@ func (d *Driver) Create() error {
 				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
 				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
 			log.Debug(command)
-			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
 	return nil
 }
 
 func (d *Driver) Start() error {
-	vmrun("start", d.vmxPath(), "nogui")
+	vmrunBestEffort("start", d.vmxPath(), "nogui")
 
 	// Do not execute the rest of boot2docker specific configuration, exit here
 	if d.ConfigDriveURL != "" {
@@ -424,7 +431,7 @@ func (d *Driver) Start() error {
 				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
 			log.Debug(command)
 
-			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
 
@@ -440,11 +447,11 @@ func (d *Driver) Remove() error {
 	s, _ := d.GetState()
 	if s == state.Running {
 		if err := d.Kill(); err != nil {
-			return fmt.Errorf("Error stopping VM before deletion")
+			return fmt.Errorf("error stopping VM before deletion")
 		}
 	}
 	log.Infof("Deleting %s...", d.MachineName)
-	vmrun("deleteVM", d.vmxPath(), "nogui")
+	vmrunBestEffort("deleteVM", d.vmxPath(), "nogui")
 	return nil
 }
 
@@ -480,7 +487,7 @@ func (d *Driver) Restart() error {
 				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
 			log.Debug(command)
 
-			vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
 	}
 
@@ -500,10 +507,6 @@ func (d *Driver) vmxPath() string {
 	return d.ResolveStorePath(fmt.Sprintf("%s.vmx", d.MachineName))
 }
 
-func (d *Driver) vmdkPath() string {
-	return d.ResolveStorePath(fmt.Sprintf("%s.vmdk", d.MachineName))
-}
-
 func (d *Driver) getIPfromDHCPLease() (string, error) {
 	var vmxfh *os.File
 	var dhcpfh *os.File
@@ -519,21 +522,21 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	// DHCP lease table for NAT vmnet interface
 	var dhcpfile = workstationDhcpLeasesPath()
 	if dhcpfile == "" {
-		return "", fmt.Errorf("no DHCP leases path found.")
+		return "", fmt.Errorf("no DHCP leases path found")
 	}
 
 	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
 		return "", err
 	}
-	defer vmxfh.Close()
+	defer func() { _ = vmxfh.Close() }()
 
-	if vmxcontent, err = ioutil.ReadAll(vmxfh); err != nil {
+	if vmxcontent, err = io.ReadAll(vmxfh); err != nil {
 		return "", err
 	}
 
 	// Look for generatedAddress as we're passing a VMX with addressType = "generated".
 	vmxparse := regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
-	for _, line := range strings.Split(string(vmxcontent), "\n") {
+	for line := range strings.SplitSeq(string(vmxcontent), "\n") {
 		if matches := vmxparse.FindStringSubmatch(line); matches == nil {
 			continue
 		} else {
@@ -549,9 +552,9 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	if dhcpfh, err = os.Open(dhcpfile); err != nil {
 		return "", err
 	}
-	defer dhcpfh.Close()
+	defer func() { _ = dhcpfh.Close() }()
 
-	if dhcpcontent, err = ioutil.ReadAll(dhcpfh); err != nil {
+	if dhcpcontent, err = io.ReadAll(dhcpfh); err != nil {
 		return "", err
 	}
 
@@ -562,7 +565,7 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	// Get the MAC address associated.
 	leasemac := regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
 
-	for _, line := range strings.Split(string(dhcpcontent), "\r\n") {
+	for line := range strings.SplitSeq(string(dhcpcontent), "\r\n") {
 
 		if matches := leaseip.FindStringSubmatch(line); matches != nil {
 			lastipmatch = matches[1]
@@ -594,7 +597,7 @@ func (d *Driver) publicSSHKeyPath() string {
 }
 
 // Make a boot2docker userdata.tar key bundle
-func (d *Driver) generateKeyBundle() error {
+func (d *Driver) generateKeyBundle() (err error) {
 	log.Debugf("Creating Tar key bundle...")
 
 	magicString := "boot2docker, this is vmware speaking"
@@ -603,11 +606,13 @@ func (d *Driver) generateKeyBundle() error {
 	if err != nil {
 		return err
 	}
-	defer tf.Close()
-	var fileWriter = tf
+	defer func() {
+		if cerr := tf.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
-	tw := tar.NewWriter(fileWriter)
-	defer tw.Close()
+	tw := tar.NewWriter(tf)
 
 	// magicString first so we can figure out who originally wrote the tar.
 	file := &tar.Header{Name: magicString, Size: int64(len(magicString))}
@@ -622,7 +627,7 @@ func (d *Driver) generateKeyBundle() error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
+	pubKey, err := os.ReadFile(d.publicSSHKeyPath())
 	if err != nil {
 		return err
 	}
@@ -630,22 +635,17 @@ func (d *Driver) generateKeyBundle() error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
 	file = &tar.Header{Name: ".ssh/authorized_keys2", Size: int64(len(pubKey)), Mode: 0644}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
-	if err := tw.Close(); err != nil {
-		return err
-	}
-
-	return nil
-
+	return tw.Close()
 }
 
 // execute command over SSH with user / password authentication
@@ -661,25 +661,34 @@ func executeSSHCommand(command string, d *Driver) error {
 
 	client, err := cryptossh.Dial("tcp", fmt.Sprintf("%s:%d", d.IPAddress, d.SSHPort), config)
 	if err != nil {
-		log.Debugf("Failed to dial:", err)
+		log.Debugf("Failed to dial: %s", err)
 		return err
 	}
 
 	session, err := client.NewSession()
 	if err != nil {
-		log.Debugf("Failed to create session: " + err.Error())
+		log.Debugf("Failed to create session: %s", err)
 		return err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	var b bytes.Buffer
 	session.Stdout = &b
 
 	if err := session.Run(command); err != nil {
-		log.Debugf("Failed to run: " + err.Error())
+		log.Debugf("Failed to run: %s", err)
 		return err
 	}
 	log.Debugf("Stdout from executeSSHCommand: %s", b.String())
 
 	return nil
+}
+
+// vmrunBestEffort runs vmrun and logs, rather than returns, any failure.
+// It is used for guest-side setup steps that must not abort the machine
+// lifecycle operation.
+func vmrunBestEffort(args ...string) {
+	if _, _, err := vmrun(args...); err != nil {
+		log.Debugf("vmrun failed (continuing): %s", err)
+	}
 }

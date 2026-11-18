@@ -1,7 +1,7 @@
 # Docker Machine VMware Workstation Driver
 
 [![Join the chat at https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation](https://badges.gitter.im/pecigonzalo/docker-machine-vmwareworkstation.svg)](https://gitter.im/pecigonzalo/docker-machine-vmwareworkstation?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-[![Windows Build Status](https://ci.appveyor.com/api/projects/status/k8j7ej2a7t58p2r0/branch/master?svg=true)](https://ci.appveyor.com/project/pecigonzalo/docker-machine-vmwareworkstation)
+[![CI](https://github.com/pecigonzalo/docker-machine-vmwareworkstation/actions/workflows/ci.yml/badge.svg)](https://github.com/pecigonzalo/docker-machine-vmwareworkstation/actions/workflows/ci.yml)
 
 This plugin for [Docker Machine](https://docs.docker.com/machine/) creates
 Docker hosts locally on a [VMware
@@ -30,7 +30,7 @@ listed on the TODO list. Suggestions and contributions are welcome.
 
 ## Requirements
 * Windows 7+ (for now)
-* [Docker Machine](https://docs.docker.com/machine/) 0.5.0+
+* [Docker Machine](https://docs.docker.com/machine/) 0.5.0+ (built against [rancher/machine](https://github.com/rancher/machine), the maintained fork)
 * [VMware Workstation](https://www.vmware.com/products/workstation) Workstation Free/Pro 10 +
 
 ## Installation
@@ -191,25 +191,29 @@ Environment variables and default values:
 If you wish to work on VMware Workstation Driver for Docker machine, you'll
 first need:
 
-* [Go](http://www.golang.org) installed (version 1.6+ is required).
-  * Make sure Go is properly installed, including setting up a [GOPATH](http://golang.org/doc/code.html#GOPATH).
-
-* [MSYS](https://msys2.github.io/)
-  * **Make** We well need to use pacman to install make
+* [Go](https://go.dev/dl/) installed (the version in `go.mod` or newer).
+  Alternatively, with [Nix](https://nixos.org/) run `nix develop` (or use
+  `direnv allow`) to get Go, golangci-lint, GoReleaser and make at compatible
+  versions.
 
 * Currently, the build only works on Windows (WIP to get it to work on
-  other platforms)
+  other platforms). Other platforms can cross-compile with `GOOS=windows`,
+  which the Makefile sets by default.
 
 To build the plugin executable binary, run these commands:
 
 ```bash
-$ go get -d github.com/pecigonzalo/docker-machine-vmwareworkstation
-$ cd $GOPATH/github.com/pecigonzalo/docker-machine-vmwareworkstation
-$ make
+git clone https://github.com/pecigonzalo/docker-machine-vmwareworkstation
+cd docker-machine-vmwareworkstation
+make
 ```
 
-The build creates the binary as `bin/docker-machine-driver-vmwareworkstation`. If you want, copy it to `${GOPATH}/bin/`.
+The build creates the binary as `bin/docker-machine-driver-vmwareworkstation.exe`.
+Copy it to a directory on your `PATH`.
 
+Other useful targets: `make lint` (requires
+[golangci-lint](https://golangci-lint.run/) v2) and `make test`. Releases are
+built by [GoReleaser](https://goreleaser.com/) when a `v*` tag is pushed.
 
 ## Authors
 

@@ -23,3 +23,8 @@
 /Godeps/
 
 # End of https://www.gitignore.io/api/go
+
+# Build output
+/bin/
+/dist/
+/.direnv/

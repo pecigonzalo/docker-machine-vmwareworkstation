@@ -15,10 +15,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
-	"unsafe"
 
-	"github.com/docker/machine/libmachine/log"
+	"github.com/rancher/machine/libmachine/log"
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
@@ -36,7 +35,7 @@ var (
 func workstationVMwareRoot() (s string, err error) {
 	key := `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\vmware.exe`
 	subkey := "Path"
-	s, err = readRegString(syscall.HKEY_LOCAL_MACHINE, key, subkey)
+	s, err = readRegString(registry.LOCAL_MACHINE, key, subkey)
 	if err != nil {
 		log.Errorf(`Unable to read registry key %s\%s`, key, subkey)
 		return
@@ -49,7 +48,7 @@ func workstationVMwareRoot() (s string, err error) {
 func workstationDhcpLeasesPathRegistry() (s string, err error) {
 	key := `SYSTEM\CurrentControlSet\services\VMnetDHCP\Parameters`
 	subkey := "LeaseFile"
-	s, err = readRegString(syscall.HKEY_LOCAL_MACHINE, key, subkey)
+	s, err = readRegString(registry.LOCAL_MACHINE, key, subkey)
 	if err != nil {
 		log.Errorf(`Unable to read registry key %s\%s`, key, subkey)
 		return
@@ -155,7 +154,7 @@ func vmrun(args ...string) (string, string, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
+		if errors.Is(err, exec.ErrNotFound) {
 			err = ErrVMRUNNotFound
 		}
 	}
@@ -172,7 +171,7 @@ func vdiskmanager(dest string, size int) error {
 	}
 
 	if stdout := cmd.Run(); stdout != nil {
-		if ee, ok := stdout.(*exec.Error); ok && ee == exec.ErrNotFound {
+		if errors.Is(stdout, exec.ErrNotFound) {
 			return ErrVMRUNNotFound
 		}
 	}
@@ -180,8 +179,8 @@ func vdiskmanager(dest string, size int) error {
 }
 
 func normalizePath(path string) string {
-	path = strings.Replace(path, "\\", "/", -1)
-	path = strings.Replace(path, "//", "/", -1)
+	path = strings.ReplaceAll(path, "\\", "/")
+	path = strings.ReplaceAll(path, "//", "/")
 	path = strings.TrimRight(path, "/")
 	return path
 }
@@ -202,40 +201,17 @@ func findFile(file string, paths []string) string {
 	return ""
 }
 
-// See http://blog.natefinch.com/2012/11/go-win-stuff.html
-//
-func readRegString(hive syscall.Handle, subKeyPath, valueName string) (value string, err error) {
-	var h syscall.Handle
-	err = syscall.RegOpenKeyEx(hive, syscall.StringToUTF16Ptr(subKeyPath), 0, syscall.KEY_READ, &h)
+// readRegString reads a string value from the Windows registry.
+func readRegString(hive registry.Key, subKeyPath, valueName string) (string, error) {
+	k, err := registry.OpenKey(hive, subKeyPath, registry.QUERY_VALUE)
 	if err != nil {
-		return
+		return "", err
 	}
-	defer syscall.RegCloseKey(h)
+	defer func() { _ = k.Close() }()
 
-	var typ uint32
-	var bufSize uint32
-	err = syscall.RegQueryValueEx(
-		h,
-		syscall.StringToUTF16Ptr(valueName),
-		nil,
-		&typ,
-		nil,
-		&bufSize)
+	value, _, err := k.GetStringValue(valueName)
 	if err != nil {
-		return
+		return "", err
 	}
-
-	data := make([]uint16, bufSize/2+1)
-	err = syscall.RegQueryValueEx(
-		h,
-		syscall.StringToUTF16Ptr(valueName),
-		nil,
-		&typ,
-		(*byte)(unsafe.Pointer(&data[0])),
-		&bufSize)
-	if err != nil {
-		return
-	}
-
-	return syscall.UTF16ToString(data), nil
+	return value, nil
 }
