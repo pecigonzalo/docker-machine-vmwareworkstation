@@ -17,7 +17,9 @@ jobs:
         with:
           go-version-file: go.mod
       # golangci-lint is pinned in tools/go.mod (updated by Dependabot).
-      - run: go tool -modfile=tools/go.mod golangci-lint run ./...
+      # bash, because PowerShell splits -modfile=tools/go.mod at the dot.
+      - shell: bash
+        run: go tool -modfile=tools/go.mod golangci-lint run ./...
 
   test:
     runs-on: windows-latest
