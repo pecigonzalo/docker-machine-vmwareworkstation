@@ -1,0 +1,4 @@
+# Keep LF everywhere, including Windows checkouts (gofmt rejects CRLF).
+* text=auto eol=lf
+*.exe binary
+*.zip binary
