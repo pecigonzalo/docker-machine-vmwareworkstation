@@ -16,10 +16,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # golangci-lint is pinned in tools/go.mod (updated by Dependabot).
-      # bash, because PowerShell splits -modfile=tools/go.mod at the dot.
-      - shell: bash
-        run: go tool -modfile=tools/go.mod golangci-lint run ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          # Keep in sync with golangci-lint in flake.nix (flake.lock).
+          version: v2.15.0
 
   test:
     runs-on: windows-latest

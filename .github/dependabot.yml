@@ -8,10 +8,6 @@ updates:
       # rancher/machine's Rancher-specific tags sort below upstream's stale
       # v0.16.x tags, so the update must be bumped by hand.
       - dependency-name: github.com/rancher/machine
-  - package-ecosystem: gomod
-    directory: /tools
-    schedule:
-      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
