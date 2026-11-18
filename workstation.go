@@ -35,6 +35,12 @@ const (
 	B2DPass        = "tcuser"
 	isoFilename    = "boot2docker.iso"
 	isoConfigDrive = "configdrive.iso"
+
+	defaultSSHUser  = B2DUser
+	defaultSSHPass  = B2DPass
+	defaultDiskSize = 20000
+	defaultCpus     = 1
+	defaultMemory   = 1024
 )
 
 // Driver for VMware Workstation
@@ -50,15 +56,13 @@ type Driver struct {
 	SSHPassword    string
 	ConfigDriveISO string
 	ConfigDriveURL string
-}
 
-const (
-	defaultSSHUser  = B2DUser
-	defaultSSHPass  = B2DPass
-	defaultDiskSize = 20000
-	defaultCpus     = 1
-	defaultMemory   = 1024
-)
+	NoShare         bool
+	ShareName       string
+	ShareFolder     string
+	GuestFolder     string
+	GuestCompatLink string
+}
 
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -105,6 +109,21 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "vmwareworkstation-ssh-password",
 			Usage:  "SSH password",
 			Value:  defaultSSHPass,
+		},
+		mcnflag.BoolFlag{
+			EnvVar: "WORKSTATION_NO_SHARE",
+			Name:   "vmwareworkstation-no-share",
+			Usage:  "Disable the mount of your home directory",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "WORKSTATION_SHARE_FOLDER",
+			Name:   "vmwareworkstation-share-folder",
+			Usage:  "Mount the specified directory instead of the default home location. Format: name:dir",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "WORKSTATION_SHARE_COMPAT",
+			Name:   "vmwareworkstation-share-compat",
+			Usage:  "Override the compatibility link created by this driver",
 		},
 	}
 }
@@ -162,7 +181,35 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		d.CPU = 16
 	}
 
+	d.NoShare = flags.Bool("vmwareworkstation-share")
+	switch runtime.GOOS {
+
+	case "linux": // TODO Test linux working
+		d.ShareName = "Home"
+		d.ShareFolder = "/home"
+		d.GuestFolder = "/Users"
+	case "windows":
+		d.ShareName = "Users"
+		d.ShareFolder = `C:\Users\`
+		d.GuestFolder = "/Users"
+		d.GuestCompatLink = "/c/Users"
+	}
+
+	if flags.String("vmwareworkstation-share-folder") != "" {
+		d.ShareName, d.ShareFolder = parseShareFolder(flags.String("vmwareworkstation-share-folder"))
+	}
+	if flags.String("vmwareworkstation-guest-share-link") != "" {
+		d.GuestCompatLink = flags.String("vmwareworkstation-guest-share-link")
+	}
+
 	return nil
+}
+
+func parseShareFolder(shareFolder string) (string, string) {
+	split := strings.Split(shareFolder, ":")
+	ShareFolder := strings.Join(split[1:], ":")
+	ShareName := split[0]
+	return ShareFolder, ShareName
 }
 
 func (d *Driver) GetURL() (string, error) {
@@ -356,40 +403,16 @@ func (d *Driver) Create() error {
 	// Expand tar file.
 	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
 
-	// Enable Shared Folders
-	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
-
-	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
-	switch runtime.GOOS {
-	case "linux": // TODO Test linux working
-		shareName = "Home"
-		shareDir = "/Home"
-		guestFolder = "/Users"
-		guestCompatLink = "/Home"
-	case "windows":
-		shareName = "Users"
-		shareDir = `C:\Users\`
-		guestFolder = "/Users"
-		guestCompatLink = "/c/Users"
-	}
-
-	if shareDir != "" {
-		if _, err := os.Stat(shareDir); err != nil && !os.IsNotExist(err) {
+	if !d.NoShare {
+		// Enable Shared Folders
+		vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
+		if err := mountSharedFolder(d); err != nil {
 			return err
-		} else if !os.IsNotExist(err) {
-			// add shared folder, create mountpoint and mount it.
-			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(), shareName, shareDir)
-
-			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
-			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
-				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
-				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
-				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
-				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
-			log.Debug(command)
-			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
+	} else {
+		log.Infof("No shared folders")
 	}
+
 	return nil
 }
 
@@ -402,37 +425,12 @@ func (d *Driver) Start() error {
 		return nil
 	}
 
-	log.Debugf("Mounting Shared Folders...")
-	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
-	switch runtime.GOOS {
-	case "linux": // TODO Test linux working
-		shareName = "Home"
-		shareDir = "/Home"
-		guestFolder = "/Users"
-		guestCompatLink = "/Home"
-	case "windows":
-		shareName = "Users"
-		shareDir = `C:\Users\`
-		guestFolder = "/Users"
-		guestCompatLink = "/c/Users"
-	}
-
-	if shareDir != "" {
-		if _, err := os.Stat(shareDir); err != nil && !os.IsNotExist(err) {
+	if !d.NoShare {
+		if err := mountSharedFolder(d); err != nil {
 			return err
-		} else if !os.IsNotExist(err) {
-			// create mountpoint and mount shared folder
-			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
-			// TODO make it an array and do foreach run
-			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
-				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
-				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
-				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
-				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
-			log.Debug(command)
-
-			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
+	} else {
+		log.Infof("No shared folders")
 	}
 
 	return nil
@@ -458,37 +456,12 @@ func (d *Driver) Remove() error {
 func (d *Driver) Restart() error {
 	_, _, err := vmrun("reset", d.vmxPath(), "nogui")
 
-	log.Debugf("Mounting Shared Folders...")
-	var shareName, shareDir, guestFolder, guestCompatLink string // TODO configurable at some point
-	switch runtime.GOOS {
-	case "linux": // TODO Test linux working
-		shareName = "Home"
-		shareDir = "/Home"
-		guestFolder = "/Users"
-		guestCompatLink = "/Home"
-	case "windows":
-		shareName = "Users"
-		shareDir = `C:\Users\`
-		guestFolder = "/Users"
-		guestCompatLink = "/c/Users"
-	}
-
-	if shareDir != "" {
-		if _, err := os.Stat(shareDir); err != nil && !os.IsNotExist(err) {
+	if !d.NoShare {
+		if err := mountSharedFolder(d); err != nil {
 			return err
-		} else if !os.IsNotExist(err) {
-			// create mountpoint and mount shared folder
-			var rootGuestCompat = strings.Split(guestCompatLink, "/")[1]
-			// TODO make it an array and do foreach run
-			command := "[ ! -d " + guestFolder + " ]&& sudo mkdir " + guestFolder +
-				";[ ! -d /" + rootGuestCompat + " ]&& sudo mkdir -p /" + rootGuestCompat +
-				";[ ! -d " + guestCompatLink + " ]&& sudo ln -s " + guestFolder + " " + guestCompatLink +
-				";[ -f /usr/local/bin/vmhgfs-fuse ]&& sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/" +
-				shareName + " " + guestFolder + " || sudo mount -t vmhgfs .host:/" + shareName + " " + guestFolder
-			log.Debug(command)
-
-			vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 		}
+	} else {
+		log.Infof("No shared folders")
 	}
 
 	return err
@@ -691,4 +664,62 @@ func vmrunBestEffort(args ...string) {
 	if _, _, err := vmrun(args...); err != nil {
 		log.Debugf("vmrun failed (continuing): %s", err)
 	}
+}
+
+func mountSharedFolder(d *Driver) error {
+	log.Infof("Mounting Shared Folders...")
+	if d.ShareFolder != "" {
+		if _, err := os.Stat(d.ShareFolder); err != nil && !os.IsNotExist(err) {
+			log.Errorf("Shared folder %s does not exist on host", d.ShareFolder)
+			return err
+		} else if !os.IsNotExist(err) {
+			// Add Share folder config so VMWare
+			log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
+			vmrunBestEffort(
+				"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
+				d.ShareName,
+				d.ShareFolder,
+			)
+
+			// Create mountpoint and mount shared folder
+			commands := []string{
+				fmt.Sprintf("[ ! -d %q ] && sudo mkdir %q", d.GuestFolder, d.GuestFolder),
+				fmt.Sprintf(
+					"[ -f /usr/local/bin/vmhgfs-fuse ] && "+
+						"sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/%v %q"+
+						" || "+
+						"sudo mount -t vmhgfs .host:/%v %q",
+					d.ShareName,
+					d.GuestFolder,
+					d.ShareName,
+					d.GuestFolder,
+				),
+			}
+
+			if d.GuestCompatLink != "" {
+				// Add a compatibility symlink
+				compat_commands := []string{
+					fmt.Sprintf(
+						"[ ! -d %q ] && sudo mkdir -p %q",
+						d.GuestCompatLink,
+						d.GuestCompatLink,
+					),
+					fmt.Sprintf(
+						"[ ! -d %q ] && "+
+							"sudo ln -s %q %q",
+						d.GuestFolder,
+						d.GuestFolder,
+						d.GuestCompatLink,
+					),
+				}
+				commands = append(commands, compat_commands...)
+			}
+
+			log.Debug(commands)
+			for _, command := range commands {
+				vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+			}
+		}
+	}
+	return nil
 }

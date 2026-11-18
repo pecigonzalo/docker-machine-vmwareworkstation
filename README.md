@@ -159,6 +159,9 @@ $ docker-machine create --driver=vmwareworkstation dev
  - `--vmwareworkstation-cpu-count`: Number of CPUs to use to create the VM (-1 to use the number of CPUs available).
  - `--vmwareworkstation-ssh-user`: SSH user
  - `--vmwareworkstation-ssh-password`: SSH password
+ - `--vmwareworkstation-no-share`: Disable the mount of your home directory
+ - `--vmwareworkstation-share-folder`: Mount the specified directory instead of the default home location. Format: name:dir
+ - `--vmwareworkstation-guest-share-link`: Additional link to the shared mount in the guest
 
 The `--vmwareworkstation-boot2docker-url` flag takes a few different forms. By
 default, if no value is specified for this flag, Machine checks locally for a
@@ -183,6 +186,9 @@ Environment variables and default values:
 | `--vmwareworkstation-memory-size`     | `WORKSTATION_MEMORY_SIZE`     | `1024`                   |
 | `--vmwareworkstation-ssh-user`        | `WORKSTATION_SSH_USER`        | `docker`                 |
 | `--vmwareworkstation-ssh-password`    | `WORKSTATION_SSH_PASSWORD`    | `tcuser`                 |
+| `--vmwareworkstation-no-share`        | `WORKSTATION_NO_SHARE`        | `false`                  |
+| `--vmwareworkstation-share-folder`    | `WORKSTATION_SHARE_FOLDER`    | Linux: `/home` Windows: `C:\Users\` |
+| `--vmwareworkstation-share-compat`    | `WORKSTATION_SHARE_COMPAT`    | Windows: `/c/Users` |
 
 ## Development
 
