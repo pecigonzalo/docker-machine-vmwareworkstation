@@ -12,8 +12,8 @@ test:
 ifeq ($(OS),Windows_NT)
 	go test ./...
 else
-	@# Windows test binaries cannot run here; make sure they at least compile.
-	go test -c -o $(or $(wildcard /dev/null),NUL) .
+	@# Windows test binaries cannot run here; compile every package without running.
+	go test -exec true ./...
 endif
 
 .PHONY: lint

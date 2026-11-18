@@ -10,8 +10,10 @@ package vmwareworkstation
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 
 	"net"
 	"os"
@@ -301,15 +303,11 @@ func (d *Driver) Create() error {
 
 	// Generate vmx config file from template
 	vmxt := template.Must(template.New("vmx").Parse(vmx))
-	vmxfile, err := os.Create(d.vmxPath())
-	if err != nil {
+	var vmxbuf bytes.Buffer
+	if err := vmxt.Execute(&vmxbuf, d); err != nil {
 		return err
 	}
-	if err := vmxt.Execute(vmxfile, d); err != nil {
-		_ = vmxfile.Close()
-		return err
-	}
-	if err := vmxfile.Close(); err != nil {
+	if err := os.WriteFile(d.vmxPath(), vmxbuf.Bytes(), 0o644); err != nil {
 		return err
 	}
 
@@ -328,7 +326,10 @@ func (d *Driver) Create() error {
 	log.Infof("Starting %s...", d.MachineName)
 	vmrunBestEffort("start", d.vmxPath(), "nogui")
 
-	var ip string
+	var (
+		ip  string
+		err error
+	)
 
 	log.Infof("Waiting for VM to come online...")
 	for i := 1; i <= 60; i++ {
@@ -488,6 +489,17 @@ func (d *Driver) vmxPath() string {
 	return d.ResolveStorePath(fmt.Sprintf("%s.vmx", d.MachineName))
 }
 
+var (
+	// vmxparse finds the generated MAC address, as we pass a VMX with addressType = "generated".
+	vmxparse = regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
+	// leaseip gets the IP from the lease table.
+	leaseip = regexp.MustCompile(`^lease (.+?) {$`)
+	// leaseend gets the lease end date time.
+	leaseend = regexp.MustCompile(`^\s*ends \d (.+?);$`)
+	// leasemac gets the MAC address associated.
+	leasemac = regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
+)
+
 func (d *Driver) getIPfromDHCPLease() (string, error) {
 	var vmxfh *os.File
 	var dhcpfh *os.File
@@ -515,8 +527,6 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 		return "", err
 	}
 
-	// Look for generatedAddress as we're passing a VMX with addressType = "generated".
-	vmxparse := regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
 	for line := range strings.SplitSeq(string(vmxcontent), "\n") {
 		if matches := vmxparse.FindStringSubmatch(line); matches == nil {
 			continue
@@ -538,13 +548,6 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 	if dhcpcontent, err = io.ReadAll(dhcpfh); err != nil {
 		return "", err
 	}
-
-	// Get the IP from the lease table.
-	leaseip := regexp.MustCompile(`^lease (.+?) {$`)
-	// Get the lease end date time.
-	leaseend := regexp.MustCompile(`^\s*ends \d (.+?);$`)
-	// Get the MAC address associated.
-	leasemac := regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
 
 	for line := range strings.SplitSeq(string(dhcpcontent), "\r\n") {
 
@@ -676,48 +679,53 @@ func vmrunBestEffort(args ...string) {
 
 func mountSharedFolder(d *Driver) error {
 	log.Infof("Mounting Shared Folders...")
-	if d.ShareFolder != "" {
-		if _, err := os.Stat(d.ShareFolder); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("cannot access shared folder %s: %w", d.ShareFolder, err)
-		} else if os.IsNotExist(err) {
-			log.Warnf("Shared folder %s does not exist on host, skipping", d.ShareFolder)
-		} else {
-			// Add Share folder config so VMWare
-			log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
-			vmrunBestEffort(
-				"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
-				d.ShareName,
-				d.ShareFolder,
-			)
+	if d.ShareFolder == "" {
+		return nil
+	}
 
-			// Create mountpoint and mount shared folder
-			commands := []string{
-				fmt.Sprintf("[ ! -d %q ] && sudo mkdir %q", d.GuestFolder, d.GuestFolder),
-				fmt.Sprintf(
-					"[ -f /usr/local/bin/vmhgfs-fuse ] && "+
-						"sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/%v %q"+
-						" || "+
-						"sudo mount -t vmhgfs .host:/%v %q",
-					d.ShareName,
-					d.GuestFolder,
-					d.ShareName,
-					d.GuestFolder,
-				),
-			}
+	if _, err := os.Stat(d.ShareFolder); errors.Is(err, fs.ErrNotExist) {
+		log.Warnf("Shared folder %s does not exist on host, skipping", d.ShareFolder)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("cannot access shared folder %s: %w", d.ShareFolder, err)
+	}
 
-			if d.GuestCompatLink != "" {
-				// Add a compatibility symlink
-				commands = append(commands,
-					fmt.Sprintf("sudo mkdir -p %q", path.Dir(d.GuestCompatLink)),
-					fmt.Sprintf("[ -e %q ] || sudo ln -s %q %q", d.GuestCompatLink, d.GuestFolder, d.GuestCompatLink),
-				)
-			}
+	// Add the share to the VM configuration, then create the mountpoint and mount it.
+	log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
+	vmrunBestEffort(
+		"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
+		d.ShareName,
+		d.ShareFolder,
+	)
 
-			log.Debug(commands)
-			for _, command := range commands {
-				vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
-			}
-		}
+	commands := guestMountCommands(d)
+	log.Debug(commands)
+	for _, command := range commands {
+		vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 	}
 	return nil
+}
+
+// guestMountCommands returns the shell commands that create the mountpoint,
+// mount the shared folder and, if configured, add the compatibility symlink.
+func guestMountCommands(d *Driver) []string {
+	commands := []string{
+		fmt.Sprintf("[ ! -d %[1]q ] && sudo mkdir %[1]q", d.GuestFolder),
+		fmt.Sprintf(
+			"[ -f /usr/local/bin/vmhgfs-fuse ] && "+
+				"sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/%[1]v %[2]q"+
+				" || "+
+				"sudo mount -t vmhgfs .host:/%[1]v %[2]q",
+			d.ShareName,
+			d.GuestFolder,
+		),
+	}
+
+	if d.GuestCompatLink != "" {
+		commands = append(commands,
+			fmt.Sprintf("sudo mkdir -p %q", path.Dir(d.GuestCompatLink)),
+			fmt.Sprintf("[ -e %q ] || sudo ln -s %q %q", d.GuestCompatLink, d.GuestFolder, d.GuestCompatLink),
+		)
+	}
+	return commands
 }
