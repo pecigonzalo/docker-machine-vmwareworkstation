@@ -298,7 +298,11 @@ func (d *Driver) GetState() (state.State, error) {
 	if _, err := os.Stat(d.vmxPath()); os.IsNotExist(err) {
 		return state.Error, err
 	}
-	if stdout, _, _ := vmrun("list"); strings.Contains(stdout, d.vmxPath()) {
+	stdout, _, err := vmrun("list")
+	if errors.Is(err, ErrVMRUNNotFound) {
+		return state.Error, err
+	}
+	if strings.Contains(stdout, d.vmxPath()) {
 		return state.Running, nil
 	}
 	return state.Stopped, nil
@@ -306,6 +310,10 @@ func (d *Driver) GetState() (state.State, error) {
 
 // PreCreateCheck checks that the machine creation process can be started safely.
 func (d *Driver) PreCreateCheck() error {
+	if err := checkVMwareTools(); err != nil {
+		return err
+	}
+
 	// Downloading boot2docker to cache should be done here to make sure
 	// that a download failure will not leave a machine half created.
 	b2dutils := mcnutils.NewB2dUtils(d.StorePath)

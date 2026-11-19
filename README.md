@@ -33,6 +33,13 @@ listed on the TODO list. Suggestions and contributions are welcome.
 * [Docker Machine](https://docs.docker.com/machine/) 0.5.0+ (built against [rancher/machine](https://github.com/rancher/machine), the maintained fork)
 * [VMware Workstation](https://www.vmware.com/products/workstation) Workstation Free/Pro 10 +
 
+The driver finds `vmrun.exe` and `vmware-vdiskmanager.exe` on your `PATH`, in
+`VMWARE_HOME`, in the install directory recorded in the registry, or in the
+default `Program Files` locations. If VMware Workstation is installed somewhere
+else, set `VMWARE_HOME` to its install directory (and `VMWARE_DATA` to the
+directory holding `vmnetdhcp.leases` if that is non-standard). `docker-machine
+create` fails immediately if the tools cannot be found.
+
 ## Installation
 
 The latest version of `docker-machine-driver-vmwareworkstation` binary is

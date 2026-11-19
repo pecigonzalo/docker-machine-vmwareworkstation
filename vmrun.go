@@ -144,6 +144,24 @@ func setVmwareCmd(cmd string) string {
 	return findFile(cmd, programFilePaths())
 }
 
+// checkVMwareTools verifies that the VMware binaries the driver shells out to
+// can be located, so a missing installation fails fast with an actionable error
+// instead of surfacing halfway through machine creation.
+func checkVMwareTools() error {
+	var missing []string
+	if vmrunBin() == "" {
+		missing = append(missing, "vmrun.exe")
+	}
+	if vdiskmanBin() == "" {
+		missing = append(missing, "vmware-vdiskmanager.exe")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: could not find %s; add the VMware Workstation install directory to PATH or set VMWARE_HOME",
+			ErrVMRUNNotFound, strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 func vmrun(args ...string) (string, string, error) {
 	bin := vmrunBin()
 	if bin == "" {
