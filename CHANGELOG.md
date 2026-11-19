@@ -8,6 +8,8 @@ CHANGES:
 * Default the NIC model to `e1000` instead of `vmxnet3`, which boot2docker 18.09 does not detect (#66)
 
 IMPROVEMENTS:
+* Fail fast in `create` when `vmrun`/`vmware-vdiskmanager` cannot be found, and report it from `GetState` instead of showing the machine as stopped (#46, #68)
+* Document `VMWARE_HOME`/`VMWARE_DATA` for non-standard VMware installs (#68)
 * Migrate from `dep` to Go modules and update to current Go
 * Switch from the archived `docker/machine` to the maintained `github.com/rancher/machine` and update `golang.org/x/crypto`
 * Read the registry with `golang.org/x/sys/windows/registry` instead of raw `syscall`
