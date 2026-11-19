@@ -181,6 +181,8 @@ Environment variables and default values:
 | CLI option                            | Environment variable          | Default                  |
 |---------------------------------------|-------------------------------|--------------------------|
 | `--vmwareworkstation-boot2docker-url` | `WORKSTATION_BOOT2DOCKER_URL` | *Latest boot2docker url* |
+| `--vmwareworkstation-network-type`    | `WORKSTATION_NETWORK_TYPE`    | `nat` (`bridged`, `hostonly`; IP discovery only works for `nat`) |
+| `--vmwareworkstation-nic-type`        | `WORKSTATION_NIC_TYPE`        | `e1000` (`e1000e`, `vmxnet3`) |
 | `--vmwareworkstation-cpu-count`       | `WORKSTATION_CPU_COUNT`       | `1`                      |
 | `--vmwareworkstation-disk-size`       | `WORKSTATION_DISK_SIZE`       | `20000`                  |
 | `--vmwareworkstation-memory-size`     | `WORKSTATION_MEMORY_SIZE`     | `1024`                   |

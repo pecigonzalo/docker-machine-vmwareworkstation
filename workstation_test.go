@@ -1,7 +1,9 @@
 package vmwareworkstation
 
 import (
+	"bytes"
 	"testing"
+	"text/template"
 
 	"github.com/rancher/machine/libmachine/drivers"
 	"github.com/stretchr/testify/assert"
@@ -75,4 +77,33 @@ func TestParseShareFolder(t *testing.T) {
 			assert.Equal(t, tt.folder, folder)
 		})
 	}
+}
+
+func TestSetConfigFromFlagsNetwork(t *testing.T) {
+	driver := NewDriver("default", "path").(*Driver)
+	opts := func(net, nic string) *drivers.CheckDriverOptions {
+		return &drivers.CheckDriverOptions{
+			FlagsValues: map[string]any{
+				"vmwareworkstation-network-type": net,
+				"vmwareworkstation-nic-type":     nic,
+			},
+			CreateFlags: driver.GetCreateFlags(),
+		}
+	}
+
+	assert.NoError(t, driver.SetConfigFromFlags(opts("Bridged", "vmxnet3")))
+	assert.Equal(t, "bridged", driver.NetworkType)
+	assert.Equal(t, "vmxnet3", driver.NICType)
+
+	assert.Error(t, driver.SetConfigFromFlags(opts("bogus", "e1000")))
+	assert.Error(t, driver.SetConfigFromFlags(opts("nat", "bogus")))
+}
+
+func TestVMXNetworkTemplate(t *testing.T) {
+	driver := NewDriver("default", "path").(*Driver)
+	driver.NetworkType, driver.NICType = "bridged", "e1000e"
+	var buf bytes.Buffer
+	assert.NoError(t, template.Must(template.New("vmx").Parse(vmx)).Execute(&buf, driver))
+	assert.Contains(t, buf.String(), `ethernet0.connectionType = "bridged"`)
+	assert.Contains(t, buf.String(), `ethernet0.virtualDev = "e1000e"`)
 }

@@ -20,6 +20,7 @@ import (
 	"path"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
@@ -44,6 +45,13 @@ const (
 	defaultDiskSize = 20000
 	defaultCpus     = 1
 	defaultMemory   = 1024
+	defaultNetType  = "nat"
+	defaultNICType  = "e1000"
+)
+
+var (
+	validNetworkTypes = []string{"nat", "bridged", "hostonly"}
+	validNICTypes     = []string{"e1000", "e1000e", "vmxnet3"}
 )
 
 // Driver for VMware Workstation
@@ -55,6 +63,9 @@ type Driver struct {
 	ISO            string
 	Boot2DockerURL string
 	CPUS           int
+
+	NetworkType string // ethernet0.connectionType: nat, bridged or hostonly
+	NICType     string // ethernet0.virtualDev: e1000, e1000e or vmxnet3
 
 	SSHPassword    string
 	ConfigDriveISO string
@@ -84,6 +95,18 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "vmwareworkstation-configdrive-url",
 			Usage:  "VMWare Workstation URL for cloud-init configdrive",
 			Value:  "",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "WORKSTATION_NETWORK_TYPE",
+			Name:   "vmwareworkstation-network-type",
+			Usage:  "network connection type of the VM: nat, bridged or hostonly (IP discovery reads the NAT DHCP leases, so only nat is fully supported)",
+			Value:  defaultNetType,
+		},
+		mcnflag.StringFlag{
+			EnvVar: "WORKSTATION_NIC_TYPE",
+			Name:   "vmwareworkstation-nic-type",
+			Usage:  "virtual network adapter model: e1000, e1000e or vmxnet3",
+			Value:  defaultNICType,
 		},
 		mcnflag.IntFlag{
 			EnvVar: "WORKSTATION_CPU_COUNT",
@@ -136,6 +159,8 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
 		CPUS:        defaultCpus,
+		NetworkType: defaultNetType,
+		NICType:     defaultNICType,
 		Memory:      defaultMemory,
 		DiskSize:    defaultDiskSize,
 		SSHPassword: defaultSSHPass,
@@ -168,6 +193,21 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Memory = flags.Int("vmwareworkstation-memory-size")
 	d.CPU = flags.Int("vmwareworkstation-cpu-count")
 	d.DiskSize = flags.Int("vmwareworkstation-disk-size")
+
+	d.NetworkType = strings.ToLower(flags.String("vmwareworkstation-network-type"))
+	if d.NetworkType == "" {
+		d.NetworkType = defaultNetType
+	}
+	if !slices.Contains(validNetworkTypes, d.NetworkType) {
+		return fmt.Errorf("invalid network type %q, expected one of %v", d.NetworkType, validNetworkTypes)
+	}
+	d.NICType = strings.ToLower(flags.String("vmwareworkstation-nic-type"))
+	if d.NICType == "" {
+		d.NICType = defaultNICType
+	}
+	if !slices.Contains(validNICTypes, d.NICType) {
+		return fmt.Errorf("invalid NIC type %q, expected one of %v", d.NICType, validNICTypes)
+	}
 	d.Boot2DockerURL = flags.String("vmwareworkstation-boot2docker-url")
 	d.ConfigDriveURL = flags.String("vmwareworkstation-configdrive-url")
 	d.ISO = d.ResolveStorePath(isoFilename)
