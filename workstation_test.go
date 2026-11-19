@@ -107,3 +107,9 @@ func TestVMXNetworkTemplate(t *testing.T) {
 	assert.Contains(t, buf.String(), `ethernet0.connectionType = "bridged"`)
 	assert.Contains(t, buf.String(), `ethernet0.virtualDev = "e1000e"`)
 }
+
+func TestVmrunHostPath(t *testing.T) {
+	assert.Equal(t, `C:\Users\me`, vmrunHostPath("C:/Users/me"))
+	assert.Equal(t, `C:\Users\me`, vmrunHostPath(`C:\Users\me`))
+	assert.Equal(t, `C:\a\b`, vmrunHostPath(`C:\a/b`))
+}

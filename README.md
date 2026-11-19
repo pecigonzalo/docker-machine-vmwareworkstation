@@ -71,7 +71,7 @@ add it to your $PATH.
       exit 1
     fi
 
-    vmrun.exe list | grep \""${VM}"\" &> /dev/null
+    vmrun.exe list | grep "${VM}.vmx" &> /dev/null
     VM_EXISTS_CODE=$?
 
     set -e
@@ -90,13 +90,13 @@ add it to your $PATH.
       if [ -n ${NO_PROXY+x} ]; then
         PROXY_ENV="$PROXY_ENV --engine-env NO_PROXY=$NO_PROXY"
       fi  
-      "${DOCKER_MACHINE}" create -d vmwareworkstation $PROXY_ENV "${VM}"
+      MSYS_NO_PATHCONV=1 "${DOCKER_MACHINE}" create -d vmwareworkstation $PROXY_ENV "${VM}"
     fi
 
     STEP="Checking status on $VM"
     VM_STATUS="$(${DOCKER_MACHINE} status ${VM} 2>&1)"
     if [ "${VM_STATUS}" != "Running" ]; then
-      "${DOCKER_MACHINE}" start "${VM}"
+      MSYS_NO_PATHCONV=1 "${DOCKER_MACHINE}" start "${VM}"
       yes | "${DOCKER_MACHINE}" regenerate-certs "${VM}"
     fi
 

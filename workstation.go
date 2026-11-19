@@ -752,7 +752,7 @@ func mountSharedFolder(d *Driver) error {
 	vmrunBestEffort(
 		"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
 		d.ShareName,
-		d.ShareFolder,
+		vmrunHostPath(d.ShareFolder),
 	)
 
 	commands := guestMountCommands(d)
@@ -761,6 +761,12 @@ func mountSharedFolder(d *Driver) error {
 		vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
 	}
 	return nil
+}
+
+// vmrunHostPath converts forward slashes to backslashes so that a host path
+// such as C:/Users/me is accepted by vmrun on Windows.
+func vmrunHostPath(path string) string {
+	return strings.ReplaceAll(path, "/", `\`)
 }
 
 // guestMountCommands returns the shell commands that create the mountpoint,
