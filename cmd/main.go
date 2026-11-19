@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/docker/machine/libmachine/drivers/plugin"
-	"github.com/pecigonzalo/docker-machine-vmwareworkstation"
+	vmwareworkstation "github.com/pecigonzalo/docker-machine-vmwareworkstation"
+	"github.com/rancher/machine/libmachine/drivers/plugin"
 )
 
 func main() {

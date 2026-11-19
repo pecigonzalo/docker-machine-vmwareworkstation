@@ -15,15 +15,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
-	"unsafe"
+	"sync"
 
-	"github.com/docker/machine/libmachine/log"
+	"github.com/rancher/machine/libmachine/log"
+	"golang.org/x/sys/windows/registry"
 )
 
+// The VMware binaries and paths are resolved lazily, on first use, so that
+// merely loading the plugin (e.g. for flag discovery) does not touch the
+// registry or the file system.
 var (
-	vmrunbin    = setVmwareCmd("vmrun.exe")
-	vdiskmanbin = setVmwareCmd("vmware-vdiskmanager.exe")
+	vmrunBin           = sync.OnceValue(func() string { return setVmwareCmd("vmrun.exe") })
+	vdiskmanBin        = sync.OnceValue(func() string { return setVmwareCmd("vmware-vdiskmanager.exe") })
+	programFilePaths   = sync.OnceValue(workstationProgramFilePaths)
+	dhcpLeasesFilePath = sync.OnceValue(workstationDhcpLeasesPath)
 )
 
 var (
@@ -36,7 +41,7 @@ var (
 func workstationVMwareRoot() (s string, err error) {
 	key := `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\vmware.exe`
 	subkey := "Path"
-	s, err = readRegString(syscall.HKEY_LOCAL_MACHINE, key, subkey)
+	s, err = readRegString(registry.LOCAL_MACHINE, key, subkey)
 	if err != nil {
 		log.Errorf(`Unable to read registry key %s\%s`, key, subkey)
 		return
@@ -49,7 +54,7 @@ func workstationVMwareRoot() (s string, err error) {
 func workstationDhcpLeasesPathRegistry() (s string, err error) {
 	key := `SYSTEM\CurrentControlSet\services\VMnetDHCP\Parameters`
 	subkey := "LeaseFile"
-	s, err = readRegString(syscall.HKEY_LOCAL_MACHINE, key, subkey)
+	s, err = readRegString(registry.LOCAL_MACHINE, key, subkey)
 	if err != nil {
 		log.Errorf(`Unable to read registry key %s\%s`, key, subkey)
 		return
@@ -66,7 +71,7 @@ func workstationDhcpLeasesPath() string {
 		return path
 	}
 
-	return findFile("vmnetdhcp.leases", workstationDataFilePaths())
+	return findFile("vmnetdhcp.leases", workstationDataFilePaths(path))
 }
 
 // workstationProgramFilesPaths returns a list of paths that are eligible
@@ -101,14 +106,12 @@ func workstationProgramFilePaths() []string {
 
 // workstationDataFilePaths returns a list of paths that are eligible
 // to contain data files we may want such as vmnet NAT configuration files.
-func workstationDataFilePaths() []string {
-	leasesPath, err := workstationDhcpLeasesPathRegistry()
-	if err != nil {
-		log.Errorf("Error getting DHCP leases path: %s", err)
-	}
-
-	if leasesPath != "" {
-		leasesPath = filepath.Dir(leasesPath)
+// registryLeasesPath is the DHCP leases file path read from the registry, or
+// empty if it is unavailable.
+func workstationDataFilePaths(registryLeasesPath string) []string {
+	leasesPath := ""
+	if registryLeasesPath != "" {
+		leasesPath = filepath.Dir(registryLeasesPath)
 	}
 
 	paths := make([]string, 0, 5)
@@ -138,11 +141,16 @@ func setVmwareCmd(cmd string) string {
 	if path, err := exec.LookPath(cmd); err == nil {
 		return path
 	}
-	return findFile(cmd, workstationProgramFilePaths())
+	return findFile(cmd, programFilePaths())
 }
 
 func vmrun(args ...string) (string, string, error) {
-	cmd := exec.Command(vmrunbin, args...)
+	bin := vmrunBin()
+	if bin == "" {
+		return "", "", ErrVMRUNNotFound
+	}
+
+	cmd := exec.Command(bin, args...)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -151,11 +159,11 @@ func vmrun(args ...string) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	log.Debugf("executing: %v %v", vmrunbin, strings.Join(args, " "))
+	log.Debugf("executing: %v %v", bin, strings.Join(args, " "))
 
 	err := cmd.Run()
 	if err != nil {
-		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
+		if errors.Is(err, exec.ErrNotFound) {
 			err = ErrVMRUNNotFound
 		}
 	}
@@ -165,23 +173,29 @@ func vmrun(args ...string) (string, string, error) {
 
 // Make a vmdk disk image with the given size (in MB).
 func vdiskmanager(dest string, size int) error {
-	cmd := exec.Command(vdiskmanbin, "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
+	bin := vdiskmanBin()
+	if bin == "" {
+		return ErrVMRUNNotFound
+	}
+
+	cmd := exec.Command(bin, "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
 
-	if stdout := cmd.Run(); stdout != nil {
-		if ee, ok := stdout.(*exec.Error); ok && ee == exec.ErrNotFound {
+	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
 			return ErrVMRUNNotFound
 		}
+		return fmt.Errorf("vmware-vdiskmanager: %w", err)
 	}
 	return nil
 }
 
 func normalizePath(path string) string {
-	path = strings.Replace(path, "\\", "/", -1)
-	path = strings.Replace(path, "//", "/", -1)
+	path = strings.ReplaceAll(path, "\\", "/")
+	path = strings.ReplaceAll(path, "//", "/")
 	path = strings.TrimRight(path, "/")
 	return path
 }
@@ -202,40 +216,17 @@ func findFile(file string, paths []string) string {
 	return ""
 }
 
-// See http://blog.natefinch.com/2012/11/go-win-stuff.html
-//
-func readRegString(hive syscall.Handle, subKeyPath, valueName string) (value string, err error) {
-	var h syscall.Handle
-	err = syscall.RegOpenKeyEx(hive, syscall.StringToUTF16Ptr(subKeyPath), 0, syscall.KEY_READ, &h)
+// readRegString reads a string value from the Windows registry.
+func readRegString(hive registry.Key, subKeyPath, valueName string) (string, error) {
+	k, err := registry.OpenKey(hive, subKeyPath, registry.QUERY_VALUE)
 	if err != nil {
-		return
+		return "", err
 	}
-	defer syscall.RegCloseKey(h)
+	defer func() { _ = k.Close() }()
 
-	var typ uint32
-	var bufSize uint32
-	err = syscall.RegQueryValueEx(
-		h,
-		syscall.StringToUTF16Ptr(valueName),
-		nil,
-		&typ,
-		nil,
-		&bufSize)
+	value, _, err := k.GetStringValue(valueName)
 	if err != nil {
-		return
+		return "", err
 	}
-
-	data := make([]uint16, bufSize/2+1)
-	err = syscall.RegQueryValueEx(
-		h,
-		syscall.StringToUTF16Ptr(valueName),
-		nil,
-		&typ,
-		(*byte)(unsafe.Pointer(&data[0])),
-		&bufSize)
-	if err != nil {
-		return
-	}
-
-	return syscall.UTF16ToString(data), nil
+	return value, nil
 }

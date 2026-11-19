@@ -10,22 +10,26 @@ package vmwareworkstation
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"io/fs"
+
 	"net"
 	"os"
+	"path"
 	"regexp"
 	"runtime"
 	"strings"
 	"text/template"
 	"time"
 
-	"github.com/docker/machine/libmachine/drivers"
-	"github.com/docker/machine/libmachine/log"
-	"github.com/docker/machine/libmachine/mcnflag"
-	"github.com/docker/machine/libmachine/mcnutils"
-	"github.com/docker/machine/libmachine/ssh"
-	"github.com/docker/machine/libmachine/state"
+	"github.com/rancher/machine/libmachine/drivers"
+	"github.com/rancher/machine/libmachine/log"
+	"github.com/rancher/machine/libmachine/mcnflag"
+	"github.com/rancher/machine/libmachine/mcnutils"
+	"github.com/rancher/machine/libmachine/ssh"
+	"github.com/rancher/machine/libmachine/state"
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
@@ -61,6 +65,8 @@ type Driver struct {
 	ShareFolder     string
 	GuestFolder     string
 	GuestCompatLink string
+
+	mac string // cached VM MAC address, see macAddress
 }
 
 // GetCreateFlags registers the flags this driver adds to
@@ -174,13 +180,13 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	// We support a maximum of 16 cpu to be consistent with Virtual Hardware 10
 	// specs.
 	if d.CPU < 1 {
-		d.CPU = int(runtime.NumCPU())
+		d.CPU = runtime.NumCPU()
 	}
 	if d.CPU > 16 {
 		d.CPU = 16
 	}
 
-	d.NoShare = flags.Bool("vmwareworkstation-share")
+	d.NoShare = flags.Bool("vmwareworkstation-no-share")
 	switch runtime.GOOS {
 
 	case "linux": // TODO Test linux working
@@ -194,21 +200,28 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		d.GuestCompatLink = "/c/Users"
 	}
 
-	if flags.String("vmwareworkstation-share-folder") != "" {
-		d.ShareName, d.ShareFolder = parseShareFolder(flags.String("vmwareworkstation-share-folder"))
+	if shareFolder := flags.String("vmwareworkstation-share-folder"); shareFolder != "" {
+		name, folder, err := parseShareFolder(shareFolder)
+		if err != nil {
+			return err
+		}
+		d.ShareName, d.ShareFolder = name, folder
 	}
-	if flags.String("vmwareworkstation-guest-share-link") != "" {
-		d.GuestCompatLink = flags.String("vmwareworkstation-guest-share-link")
+	if compat := flags.String("vmwareworkstation-share-compat"); compat != "" {
+		d.GuestCompatLink = compat
 	}
 
 	return nil
 }
 
-func parseShareFolder(shareFolder string) (string, string) {
-	split := strings.Split(shareFolder, ":")
-	ShareFolder := strings.Join(split[1:len(split)], ":")
-	ShareName := split[0]
-	return ShareFolder, ShareName
+// parseShareFolder splits a "name:dir" value into the share name and the host
+// directory. The directory may itself contain colons (e.g. C:\Users).
+func parseShareFolder(value string) (name, folder string, err error) {
+	name, folder, ok := strings.Cut(value, ":")
+	if !ok || name == "" || folder == "" {
+		return "", "", fmt.Errorf("invalid share folder %q, expected format name:dir", value)
+	}
+	return name, folder, nil
 }
 
 func (d *Driver) GetURL() (string, error) {
@@ -292,11 +305,13 @@ func (d *Driver) Create() error {
 
 	// Generate vmx config file from template
 	vmxt := template.Must(template.New("vmx").Parse(vmx))
-	vmxfile, err := os.Create(d.vmxPath())
-	if err != nil {
+	var vmxbuf bytes.Buffer
+	if err := vmxt.Execute(&vmxbuf, d); err != nil {
 		return err
 	}
-	vmxt.Execute(vmxfile, d)
+	if err := os.WriteFile(d.vmxPath(), vmxbuf.Bytes(), 0o644); err != nil {
+		return err
+	}
 
 	// Generate vmdk file
 	diskImg := d.ResolveStorePath(fmt.Sprintf("%s.vmdk", d.MachineName))
@@ -311,9 +326,14 @@ func (d *Driver) Create() error {
 	}
 
 	log.Infof("Starting %s...", d.MachineName)
-	vmrun("start", d.vmxPath(), "nogui")
+	if err := vmrunChecked("start", "start", d.vmxPath(), "nogui"); err != nil {
+		return err
+	}
 
-	var ip string
+	var (
+		ip  string
+		err error
+	)
 
 	log.Infof("Waiting for VM to come online...")
 	for i := 1; i <= 60; i++ {
@@ -326,19 +346,19 @@ func (d *Driver) Create() error {
 
 		if ip != "" {
 			log.Debugf("Got an ip: %s", ip)
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, 22), time.Duration(2*time.Second))
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, 22), 2*time.Second)
 			if err != nil {
 				log.Debugf("SSH Daemon not responding yet: %s", err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			conn.Close()
+			_ = conn.Close()
 			break
 		}
 	}
 
 	if ip == "" {
-		return fmt.Errorf("Machine didn't return an IP after 120 seconds, aborting")
+		return fmt.Errorf("machine didn't return an IP after 120 seconds, aborting")
 	}
 
 	// we got an IP, let's copy ssh keys over
@@ -362,9 +382,9 @@ func (d *Driver) Create() error {
 		if keyfh, err = os.Open(d.publicSSHKeyPath()); err != nil {
 			return err
 		}
-		defer keyfh.Close()
+		defer func() { _ = keyfh.Close() }()
 
-		if keycontent, err = ioutil.ReadAll(keyfh); err != nil {
+		if keycontent, err = io.ReadAll(keyfh); err != nil {
 			return err
 		}
 
@@ -388,17 +408,19 @@ func (d *Driver) Create() error {
 	}
 
 	// Test if /var/lib/boot2docker exists
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "directoryExistsInGuest", d.vmxPath(), "/var/lib/boot2docker")
 
 	// Copy SSH keys bundle
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar")
+	if err := vmrunChecked("CopyFileFromHostToGuest", "-gu", B2DUser, "-gp", B2DPass, "CopyFileFromHostToGuest", d.vmxPath(), d.ResolveStorePath("userdata.tar"), "/home/docker/userdata.tar"); err != nil {
+		return err
+	}
 
 	// Expand tar file.
-	vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
+	vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", "sudo /bin/mv /home/docker/userdata.tar /var/lib/boot2docker/userdata.tar && sudo tar xf /var/lib/boot2docker/userdata.tar -C /home/docker/ > /var/log/userdata.log 2>&1 && sudo chown -R docker:staff /home/docker")
 
 	if !d.NoShare {
 		// Enable Shared Folders
-		vmrun("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
+		vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "enableSharedFolders", d.vmxPath())
 		if err := mountSharedFolder(d); err != nil {
 			return err
 		}
@@ -410,7 +432,9 @@ func (d *Driver) Create() error {
 }
 
 func (d *Driver) Start() error {
-	vmrun("start", d.vmxPath(), "nogui")
+	if err := vmrunChecked("start", "start", d.vmxPath(), "nogui"); err != nil {
+		return err
+	}
 
 	// Do not execute the rest of boot2docker specific configuration, exit here
 	if d.ConfigDriveURL != "" {
@@ -438,12 +462,11 @@ func (d *Driver) Remove() error {
 	s, _ := d.GetState()
 	if s == state.Running {
 		if err := d.Kill(); err != nil {
-			return fmt.Errorf("Error stopping VM before deletion")
+			return fmt.Errorf("error stopping VM before deletion")
 		}
 	}
 	log.Infof("Deleting %s...", d.MachineName)
-	vmrun("deleteVM", d.vmxPath(), "nogui")
-	return nil
+	return vmrunChecked("deleteVM", "deleteVM", d.vmxPath(), "nogui")
 }
 
 func (d *Driver) Restart() error {
@@ -473,70 +496,69 @@ func (d *Driver) vmxPath() string {
 	return d.ResolveStorePath(fmt.Sprintf("%s.vmx", d.MachineName))
 }
 
-func (d *Driver) vmdkPath() string {
-	return d.ResolveStorePath(fmt.Sprintf("%s.vmdk", d.MachineName))
-}
+var (
+	// vmxparse finds the generated MAC address, as we pass a VMX with addressType = "generated".
+	vmxparse = regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
+	// leaseip gets the IP from the lease table.
+	leaseip = regexp.MustCompile(`^lease (.+?) {$`)
+	// leaseend gets the lease end date time.
+	leaseend = regexp.MustCompile(`^\s*ends \d (.+?);$`)
+	// leasemac gets the MAC address associated.
+	leasemac = regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
+)
 
-func (d *Driver) getIPfromDHCPLease() (string, error) {
-	var vmxfh *os.File
-	var dhcpfh *os.File
-	var vmxcontent []byte
-	var dhcpcontent []byte
+// macAddress returns the VM's generated MAC address from its VMX file. VMware
+// only writes it on first power-on, so it is looked up until found and cached.
+func (d *Driver) macAddress() (string, error) {
+	if d.mac != "" {
+		return d.mac, nil
+	}
+
+	vmxcontent, err := os.ReadFile(d.vmxPath())
+	if err != nil {
+		return "", err
+	}
+
 	var macaddr string
-	var err error
-	var lastipmatch string
-	var currentip string
-	var lastleaseendtime time.Time
-	var currentleadeendtime time.Time
-
-	// DHCP lease table for NAT vmnet interface
-	var dhcpfile = workstationDhcpLeasesPath()
-	if dhcpfile == "" {
-		return "", fmt.Errorf("no DHCP leases path found.")
-	}
-
-	if vmxfh, err = os.Open(d.vmxPath()); err != nil {
-		return "", err
-	}
-	defer vmxfh.Close()
-
-	if vmxcontent, err = ioutil.ReadAll(vmxfh); err != nil {
-		return "", err
-	}
-
-	// Look for generatedAddress as we're passing a VMX with addressType = "generated".
-	vmxparse := regexp.MustCompile(`^ethernet0.generatedAddress\s*=\s*"(.*?)"\s*$`)
-	for _, line := range strings.Split(string(vmxcontent), "\n") {
-		if matches := vmxparse.FindStringSubmatch(line); matches == nil {
-			continue
-		} else {
+	for line := range strings.SplitSeq(string(vmxcontent), "\n") {
+		if matches := vmxparse.FindStringSubmatch(line); matches != nil {
 			macaddr = strings.ToLower(matches[1])
 		}
 	}
-
 	if macaddr == "" {
 		return "", fmt.Errorf("couldn't find MAC address in VMX file %s", d.vmxPath())
 	}
 
 	log.Debugf("MAC address in VMX: %s", macaddr)
-	if dhcpfh, err = os.Open(dhcpfile); err != nil {
+	d.mac = macaddr
+	return macaddr, nil
+}
+
+func (d *Driver) getIPfromDHCPLease() (string, error) {
+	// DHCP lease table for NAT vmnet interface
+	dhcpfile := dhcpLeasesFilePath()
+	if dhcpfile == "" {
+		return "", fmt.Errorf("no DHCP leases path found")
+	}
+
+	macaddr, err := d.macAddress()
+	if err != nil {
 		return "", err
 	}
-	defer dhcpfh.Close()
 
-	if dhcpcontent, err = ioutil.ReadAll(dhcpfh); err != nil {
+	// The lease table changes while the VM boots, so it is re-read on each call.
+	dhcpcontent, err := os.ReadFile(dhcpfile)
+	if err != nil {
 		return "", err
 	}
 
-	// Get the IP from the lease table.
-	leaseip := regexp.MustCompile(`^lease (.+?) {$`)
-	// Get the lease end date time.
-	leaseend := regexp.MustCompile(`^\s*ends \d (.+?);$`)
-	// Get the MAC address associated.
-	leasemac := regexp.MustCompile(`^\s*hardware ethernet (.+?);$`)
-
-	for _, line := range strings.Split(string(dhcpcontent), "\r\n") {
-
+	var (
+		lastipmatch         string
+		currentip           string
+		lastleaseendtime    time.Time
+		currentleadeendtime time.Time
+	)
+	for line := range strings.SplitSeq(string(dhcpcontent), "\r\n") {
 		if matches := leaseip.FindStringSubmatch(line); matches != nil {
 			lastipmatch = matches[1]
 			continue
@@ -559,7 +581,6 @@ func (d *Driver) getIPfromDHCPLease() (string, error) {
 
 	log.Debugf("IP found in DHCP lease table: %s", currentip)
 	return currentip, nil
-
 }
 
 func (d *Driver) publicSSHKeyPath() string {
@@ -567,7 +588,7 @@ func (d *Driver) publicSSHKeyPath() string {
 }
 
 // Make a boot2docker userdata.tar key bundle
-func (d *Driver) generateKeyBundle() error {
+func (d *Driver) generateKeyBundle() (err error) {
 	log.Debugf("Creating Tar key bundle...")
 
 	magicString := "boot2docker, this is vmware speaking"
@@ -576,11 +597,13 @@ func (d *Driver) generateKeyBundle() error {
 	if err != nil {
 		return err
 	}
-	defer tf.Close()
-	var fileWriter = tf
+	defer func() {
+		if cerr := tf.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
-	tw := tar.NewWriter(fileWriter)
-	defer tw.Close()
+	tw := tar.NewWriter(tf)
 
 	// magicString first so we can figure out who originally wrote the tar.
 	file := &tar.Header{Name: magicString, Size: int64(len(magicString))}
@@ -595,7 +618,7 @@ func (d *Driver) generateKeyBundle() error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
+	pubKey, err := os.ReadFile(d.publicSSHKeyPath())
 	if err != nil {
 		return err
 	}
@@ -603,22 +626,17 @@ func (d *Driver) generateKeyBundle() error {
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
 	file = &tar.Header{Name: ".ssh/authorized_keys2", Size: int64(len(pubKey)), Mode: 0644}
 	if err := tw.WriteHeader(file); err != nil {
 		return err
 	}
-	if _, err := tw.Write([]byte(pubKey)); err != nil {
+	if _, err := tw.Write(pubKey); err != nil {
 		return err
 	}
-	if err := tw.Close(); err != nil {
-		return err
-	}
-
-	return nil
-
+	return tw.Close()
 }
 
 // execute command over SSH with user / password authentication
@@ -634,22 +652,22 @@ func executeSSHCommand(command string, d *Driver) error {
 
 	client, err := cryptossh.Dial("tcp", fmt.Sprintf("%s:%d", d.IPAddress, d.SSHPort), config)
 	if err != nil {
-		log.Debugf("Failed to dial:", err)
+		log.Debugf("Failed to dial: %s", err)
 		return err
 	}
 
 	session, err := client.NewSession()
 	if err != nil {
-		log.Debugf("Failed to create session: " + err.Error())
+		log.Debugf("Failed to create session: %s", err)
 		return err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	var b bytes.Buffer
 	session.Stdout = &b
 
 	if err := session.Run(command); err != nil {
-		log.Debugf("Failed to run: " + err.Error())
+		log.Debugf("Failed to run: %s", err)
 		return err
 	}
 	log.Debugf("Stdout from executeSSHCommand: %s", b.String())
@@ -657,60 +675,74 @@ func executeSSHCommand(command string, d *Driver) error {
 	return nil
 }
 
-func mountSharedFolder(d *Driver) error {
-	log.Infof("Mounting Shared Folders...")
-	if d.ShareFolder != "" {
-		if _, err := os.Stat(d.ShareFolder); err != nil && !os.IsNotExist(err) {
-			log.Error("Shared folder %s does not exist on host", d.ShareFolder)
-			return err
-		} else if !os.IsNotExist(err) {
-			// Add Share folder config so VMWare
-			log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
-			vmrun(
-				"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
-				d.ShareName,
-				d.ShareFolder,
-			)
-
-			// Create mountpoint and mount shared folder
-			commands := []string{
-				fmt.Sprintf("[ ! -d %q ] && sudo mkdir %q", d.GuestFolder, d.GuestFolder),
-				fmt.Sprintf(
-					"[ -f /usr/local/bin/vmhgfs-fuse ] && "+
-						"sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/%v %q"+
-						" || "+
-						"sudo mount -t vmhgfs .host:/%v %q",
-					d.ShareName,
-					d.GuestFolder,
-					d.ShareName,
-					d.GuestFolder,
-				),
-			}
-
-			if d.GuestCompatLink != "" {
-				// Add a compatibility symlink
-				compat_commands := []string{
-					fmt.Sprintf(
-						"[ ! -d %q ] && sudo mkdir -p %q",
-						d.GuestCompatLink,
-						d.GuestCompatLink,
-					),
-					fmt.Sprintf(
-						"[ ! -d %q ] && "+
-							"sudo ln -s %q %q",
-						d.GuestFolder,
-						d.GuestFolder,
-						d.GuestCompatLink,
-					),
-				}
-				commands = append(commands, compat_commands...)
-			}
-
-			log.Debug(commands)
-			for _, command := range commands {
-				vmrun("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
-			}
-		}
+// vmrunChecked runs vmrun and returns an error, naming the operation and
+// including vmrun's output, if it fails.
+func vmrunChecked(op string, args ...string) error {
+	stdout, stderr, err := vmrun(args...)
+	if err != nil {
+		return fmt.Errorf("vmrun %s: %w: %s", op, err, strings.TrimSpace(stdout+stderr))
 	}
 	return nil
+}
+
+// vmrunBestEffort runs vmrun and logs, rather than returns, any failure. It is
+// only for optional guest-side steps whose failure must not abort the
+// operation.
+func vmrunBestEffort(args ...string) {
+	if _, _, err := vmrun(args...); err != nil {
+		log.Warnf("vmrun failed (continuing): %s", err)
+	}
+}
+
+func mountSharedFolder(d *Driver) error {
+	log.Infof("Mounting Shared Folders...")
+	if d.ShareFolder == "" {
+		return nil
+	}
+
+	if _, err := os.Stat(d.ShareFolder); errors.Is(err, fs.ErrNotExist) {
+		log.Warnf("Shared folder %s does not exist on host, skipping", d.ShareFolder)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("cannot access shared folder %s: %w", d.ShareFolder, err)
+	}
+
+	// Add the share to the VM configuration, then create the mountpoint and mount it.
+	log.Infof("Adding shared folder %s and mapping to /%s ...", d.ShareFolder, d.ShareName)
+	vmrunBestEffort(
+		"-gu", B2DUser, "-gp", B2DPass, "addSharedFolder", d.vmxPath(),
+		d.ShareName,
+		d.ShareFolder,
+	)
+
+	commands := guestMountCommands(d)
+	log.Debug(commands)
+	for _, command := range commands {
+		vmrunBestEffort("-gu", B2DUser, "-gp", B2DPass, "runScriptInGuest", d.vmxPath(), "/bin/sh", command)
+	}
+	return nil
+}
+
+// guestMountCommands returns the shell commands that create the mountpoint,
+// mount the shared folder and, if configured, add the compatibility symlink.
+func guestMountCommands(d *Driver) []string {
+	commands := []string{
+		fmt.Sprintf("[ ! -d %[1]q ] && sudo mkdir %[1]q", d.GuestFolder),
+		fmt.Sprintf(
+			"[ -f /usr/local/bin/vmhgfs-fuse ] && "+
+				"sudo /usr/local/bin/vmhgfs-fuse -o allow_other .host:/%[1]v %[2]q"+
+				" || "+
+				"sudo mount -t vmhgfs .host:/%[1]v %[2]q",
+			d.ShareName,
+			d.GuestFolder,
+		),
+	}
+
+	if d.GuestCompatLink != "" {
+		commands = append(commands,
+			fmt.Sprintf("sudo mkdir -p %q", path.Dir(d.GuestCompatLink)),
+			fmt.Sprintf("[ -e %q ] || sudo ln -s %q %q", d.GuestCompatLink, d.GuestFolder, d.GuestCompatLink),
+		)
+	}
+	return commands
 }

@@ -1,28 +1,35 @@
-GOOS=windows
-GOARCH=amd64
+BINARY := docker-machine-driver-vmwareworkstation
 
-default: deps test build
+# The driver only builds for Windows (registry and vmrun.exe access). The
+# target is set per recipe so other tools still use the host platform.
+vet test build lint: export GOOS := windows
+vet test build lint: export GOARCH := amd64
 
-deps:
-	dep ensure
+.PHONY: default
+default: test build
 
-test:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go test
-
+.PHONY: vet
 vet:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go vet
+	go vet ./...
 
+.PHONY: test
+test: vet
+ifeq ($(OS),Windows_NT)
+	go test ./...
+else
+	@# Windows test binaries cannot run here; compile every package without running.
+	go test -exec true ./...
+endif
+
+.PHONY: lint
+lint:
+	golangci-lint run ./...
+
+# Build flags live in .goreleaser.yaml so local, CI and release builds match.
+.PHONY: build
 build:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build \
-		-i \
-		-o ./bin/docker-machine-driver-vmwareworkstation.exe \
-		./cmd/
+	goreleaser build --snapshot --clean --single-target -o bin/$(BINARY).exe
 
+.PHONY: clean
 clean:
-	$(RM) -rf vendor
-	$(RM) bin/*
-
-.PHONY: clean deps test build
+	$(RM) -r bin dist

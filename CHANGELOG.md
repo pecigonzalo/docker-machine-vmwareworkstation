@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+IMPROVEMENTS:
+* Migrate from `dep` to Go modules and update to current Go
+* Switch from the archived `docker/machine` to the maintained `github.com/rancher/machine` and update `golang.org/x/crypto`
+* Read the registry with `golang.org/x/sys/windows/registry` instead of raw `syscall`
+* Replace Travis CI and AppVeyor with GitHub Actions (CI and tag-based release)
+
 ## 2.0.0
 IMPROVEMENTS:
 * Update github.com/docker/machine to `0.14.0`
