@@ -158,6 +158,23 @@ command:
 $ docker-machine create --driver=vmwareworkstation dev
 ```
 
+### Docker engine options
+
+Engine settings such as a registry mirror are handled by Docker Machine itself,
+not by this driver, so they are passed to `create` directly:
+
+```bash
+$ docker-machine create --driver=vmwareworkstation \
+    --engine-registry-mirror=https://my-mirror.example.com dev
+```
+
+`--engine-registry-mirror` can also be set with the `ENGINE_REGISTRY_MIRROR`
+environment variable, which is useful when `create` is called from a script you
+do not want to edit. `--engine-install-url` reads `MACHINE_DOCKER_INSTALL_URL`.
+Other engine flags (`--engine-insecure-registry`, `--engine-opt`,
+`--engine-label`, `--engine-storage-driver`, `--engine-env`) have no environment
+variable and must be given on the command line.
+
 ## Options
 
  - `--vmwareworkstation-boot2docker-url`: The URL of the [Boot2Docker](https://github.com/boot2docker/boot2docker) image.
