@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+FEATURES:
+* Add `--vmwareworkstation-network-type` and `--vmwareworkstation-nic-type` (#27)
+
+CHANGES:
+* Default the NIC model to `e1000` instead of `vmxnet3`, which boot2docker 18.09 does not detect (#66)
+
 IMPROVEMENTS:
 * Migrate from `dep` to Go modules and update to current Go
 * Switch from the archived `docker/machine` to the maintained `github.com/rancher/machine` and update `golang.org/x/crypto`
