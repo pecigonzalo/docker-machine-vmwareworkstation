@@ -145,7 +145,12 @@ func setVmwareCmd(cmd string) string {
 }
 
 func vmrun(args ...string) (string, string, error) {
-	cmd := exec.Command(vmrunBin(), args...)
+	bin := vmrunBin()
+	if bin == "" {
+		return "", "", ErrVMRUNNotFound
+	}
+
+	cmd := exec.Command(bin, args...)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -154,7 +159,7 @@ func vmrun(args ...string) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	log.Debugf("executing: %v %v", vmrunBin(), strings.Join(args, " "))
+	log.Debugf("executing: %v %v", bin, strings.Join(args, " "))
 
 	err := cmd.Run()
 	if err != nil {
@@ -168,7 +173,12 @@ func vmrun(args ...string) (string, string, error) {
 
 // Make a vmdk disk image with the given size (in MB).
 func vdiskmanager(dest string, size int) error {
-	cmd := exec.Command(vdiskmanBin(), "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
+	bin := vdiskmanBin()
+	if bin == "" {
+		return ErrVMRUNNotFound
+	}
+
+	cmd := exec.Command(bin, "-c", "-t", "0", "-s", fmt.Sprintf("%dMB", size), "-a", "lsilogic", dest)
 	if os.Getenv("MACHINE_DEBUG") != "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
