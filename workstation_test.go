@@ -76,3 +76,9 @@ func TestParseShareFolder(t *testing.T) {
 		})
 	}
 }
+
+func TestVmrunHostPath(t *testing.T) {
+	assert.Equal(t, `C:\Users\me`, vmrunHostPath("C:/Users/me"))
+	assert.Equal(t, `C:\Users\me`, vmrunHostPath(`C:\Users\me`))
+	assert.Equal(t, `C:\a\b`, vmrunHostPath(`C:\a/b`))
+}
